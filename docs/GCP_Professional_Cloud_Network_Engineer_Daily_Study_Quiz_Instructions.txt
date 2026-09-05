@@ -1,0 +1,191 @@
+# Google Cloud Professional Cloud Network Engineer Daily Interactive Study Report Instructions
+
+## Purpose
+Create a daily, self-contained, advanced Google Cloud networking study report aligned primarily to the current Google Cloud Professional Cloud Network Engineer certification blueprint and to real-world cloud network engineering practice.
+
+The report must be useful even if the reader never opens the source articles. It must teach the selected topics in enough depth to function as a standalone study resource, while still linking to authoritative sources for verification and further reading.
+
+## Source of Truth and Blueprint
+1. At the start of every run, verify the current official Google Cloud Professional Cloud Network Engineer certification page and current official exam guide.
+2. If Google publishes a newer exam guide, use the newer guide and adapt topic coverage and question weighting accordingly.
+3. Prefer official Google Cloud documentation, architecture center material, product documentation, release notes, Google Cloud blogs written by product teams, and official training/certification resources.
+4. Use authoritative community or expert sources only when they add meaningful operational detail that is not clearly explained in official documentation.
+5. Do not claim an exam, feature, product tier, or behavior is current unless verified from a current source.
+
+## Current Blueprint Baseline
+Unless the official exam guide has changed, use these six domains as the baseline:
+1. Designing and planning a Google Cloud VPC network — approximately 24%.
+2. Implementing a VPC network — approximately 19%.
+3. Configuring managed network services — approximately 16%.
+4. Configuring and implementing hybrid and multi-cloud network interconnectivity — approximately 15%.
+5. Managing, monitoring, and troubleshooting network operations — approximately 12%.
+6. Configuring, implementing, and managing a cloud network security solution — approximately 14%.
+
+For exactly 50 questions, use this closest practical distribution unless the current official blueprint changes:
+- Domain 1: 12 questions
+- Domain 2: 10 questions
+- Domain 3: 8 questions
+- Domain 4: 7 questions
+- Domain 5: 6 questions
+- Domain 6: 7 questions
+Total: exactly 50 questions.
+
+## Daily Topic Selection
+Create exactly 12 substantive target lessons per report. Collectively they must span the current certification blueprint and emphasize advanced, practical networking knowledge.
+
+Potential lesson families include, but are not limited to:
+- VPC design, subnetting, IPv4/IPv6, MTU, Shared VPC, IAM in Shared VPC, VPC Network Peering, Private Service Connect, private services access, Private Google Access, VPC Service Controls, network tiers, serverless VPC connectivity, and route behavior.
+- Static routes, dynamic routing, Cloud Router, regional versus global dynamic routing, route priority, MED, BGP best-path behavior, custom advertised routes, custom learned routes, BFD, policy-based routing, and appliance insertion.
+- Network Connectivity Center, VPC spokes, hybrid spokes, producer spokes, hub-and-spoke designs, mesh and star topologies, site-to-site data transfer, router appliances, transitivity, Private NAT, and PSC propagation.
+- Cloud Load Balancing, Application Load Balancers, proxy and passthrough load balancers, internal versus external load balancing, global versus regional load balancing, backend services, NEGs, MIGs, health checks, URL maps, session affinity, traffic management, and GKE load balancing.
+- Cloud DNS, public and private zones, split-horizon DNS, DNS forwarding, DNS peering, cross-project binding, DNSSEC, routing policies, and hybrid DNS designs.
+- Public Cloud NAT, Private NAT, port allocation, Secure Web Proxy, internet egress design, and private access to Google APIs.
+- Cloud Interconnect, Dedicated Interconnect, Partner Interconnect, Cross-Cloud Interconnect, VLAN attachments, MACsec, HA VPN over Interconnect, 99.9% versus 99.99% topologies, HA VPN, and Classic VPN where still relevant.
+- GKE networking, VPC-native clusters, alias IP ranges, Pod and Service CIDRs, additional Pod ranges, private nodes, private control planes, authorized networks, Dataplane V2, network policies, SNAT, IP masquerade, IPv6, and Gateway/Ingress behavior.
+- Cloud NGFW, VPC firewall rules, hierarchical firewall policies, global and regional policies, secure tags, service accounts, network tags, firewall logging, Cloud NGFW tiers, Layer 7 inspection, Cloud IDS, Packet Mirroring, self-managed virtual appliances, internal load balancer next hops, and policy-based routing for inspection.
+- Google Cloud Armor, WAF policies, DDoS protection, Adaptive Protection, rate limiting, bot management, edge/backend policies, and threat intelligence.
+- Observability and troubleshooting with VPC Flow Logs, Cloud Logging, Cloud Monitoring, Network Intelligence Center, Network Topology, Connectivity Tests, Performance Dashboard, Firewall Insights, Network Analyzer, Flow Analyzer, Cloud Router logs, VPN metrics, Interconnect metrics, NAT logs, and Packet Mirroring.
+
+Do not mechanically rotate through a fixed list. Choose 12 high-value lessons that are meaningfully different from the previous 30 calendar days according to the uniqueness ledger.
+
+## 30-Day Uniqueness Ledger
+Before researching, fetch `docs/gcp-study-uniqueness-ledger.json`.
+
+Treat the previous 30 calendar days as a hard blocklist. Do not reuse any blocked:
+- primary article URL,
+- scenario article URL,
+- canonical URL,
+- title or topic fingerprint,
+- feature lesson,
+- source case,
+- substantially equivalent scenario,
+- substantially equivalent troubleshooting story.
+
+A changed tracking parameter or superficial title variation does not make a source unique.
+
+Only update the ledger after the report has been fully generated, committed, fetched back, and successfully validated. If validation fails, do not advance the ledger.
+
+The ledger should retain enough metadata to detect semantic repetition, including run date, report filename, selected lesson names, source URLs, canonical URLs, topic fingerprints, and scenario fingerprints.
+
+## Research Requirements
+For each of the 12 lessons:
+1. Identify at least one authoritative primary source, preferably official Google Cloud documentation.
+2. Read the relevant source deeply enough to capture architecture, purpose, prerequisites, limits, dependencies, routing behavior, security implications, operational caveats, and troubleshooting considerations.
+3. Follow useful supporting links when necessary, normally up to two levels deep.
+4. Record the useful source URLs.
+5. Do not merely produce snippets. Write a substantive standalone lesson that captures the essence of the source material in original words.
+6. Include concrete design or troubleshooting examples where appropriate.
+7. Include relevant `gcloud`, Terraform, configuration, or verification examples only when validated against authoritative sources. Never invent commands, flags, fields, defaults, or output.
+8. Clearly identify feature limitations, regional/global scope, quotas, compatibility, preview/GA status, dependencies, and licensing/tier considerations when they materially affect design.
+
+## Images and Diagrams
+1. Include official Google-hosted figures or diagrams when a stable, directly retrievable image URL is verified.
+2. Keep the original source page URL near each externally hosted figure.
+3. Do not fabricate image URLs.
+4. Add Mermaid teaching diagrams where they improve understanding of flows, routing, hybrid connectivity, inspection paths, DNS resolution, load balancing, or troubleshooting.
+5. Mermaid diagrams must be syntactically valid and render in the final HTML.
+6. Prefer diagrams that explain packet or control-plane flow instead of decorative graphics.
+
+## Report Structure
+Generate one genuine, self-contained interactive HTML report in `docs/` named:
+`GCP_Professional_Cloud_Network_Engineer_Daily_Study_Quiz_YYYY-MM-DD-HH-MM.html`
+
+The HTML must include:
+- Title, generation timestamp, and current blueprint version/reference.
+- A concise executive study summary.
+- Exactly 12 substantive lessons.
+- A visible blueprint/domain mapping for every lesson.
+- Source links for every lesson.
+- Verified official Google-hosted figures where useful and available.
+- Mermaid diagrams where useful.
+- Tables for comparisons, limits, decision criteria, and troubleshooting when appropriate.
+- Practical design guidance and operational pitfalls.
+- A section on what an expert Google Cloud network engineer should remember.
+- Exactly 50 automatically gradable questions.
+- Immediate per-question feedback or an equivalent review mechanism.
+- A final grading control that calculates score and percentage.
+- A visible answer review after grading.
+- No dependency on a backend service.
+- All CSS and JavaScript necessary for the quiz embedded in the HTML except for explicitly justified external libraries such as Mermaid loaded from a stable CDN.
+
+## Question Quality Requirements
+Questions must test understanding rather than trivia.
+
+Use scenario-based questions involving architecture selection, routing outcomes, BGP behavior, hybrid connectivity, DNS, load balancing, GKE networking, security, observability, and troubleshooting.
+
+Requirements:
+- Exactly 50 questions.
+- Use the current exam-domain weighting. For the baseline six-domain guide use 12/10/8/7/6/7.
+- Automatically gradable multiple-choice or multiple-select questions.
+- Clearly identify when multiple answers must be selected.
+- Distractors must be technically plausible and similar in length/detail to the correct answer.
+- Avoid giveaway wording, obviously absurd distractors, or answers that are consistently longer than distractors.
+- Explain why the correct answer is correct and why the important distractors are wrong.
+- Do not reproduce official exam questions, dumps, or copyrighted question banks.
+
+## Source-Role Separation
+Maintain clear separation between:
+- Primary authoritative sources used to establish technical facts.
+- Scenario/supporting sources used to illustrate implementation or troubleshooting.
+- Any community/expert commentary used only for supplemental perspective.
+
+Do not allow a weak community source to override official Google Cloud documentation.
+
+## Index Publishing
+Update `docs/index.html` after a successful report generation so it prominently links to the latest validated report.
+
+Use the GitHub Pages URL pattern:
+`https://ccaiccie.github.io/gcp-networking/<filename>.html`
+
+The index should show at minimum:
+- Latest report title/date.
+- A prominent link to the latest report.
+- Short summaries of the 12 lessons.
+- Validation status.
+- 30-day uniqueness status.
+
+## Validation After Commit
+After committing the report, updated index, and updated ledger, fetch all three files back from GitHub and validate the committed versions.
+
+Validation must confirm:
+- Exactly 12 substantive lessons are present.
+- Every lesson maps to the current blueprint.
+- Source-role separation is respected.
+- Exactly 50 questions exist.
+- Domain distribution matches the current blueprint; baseline distribution is 12/10/8/7/6/7.
+- Quiz controls work structurally: selectable answers, grading control, score calculation, and answer feedback/review are present.
+- Report HTML is self-contained except for approved external libraries/images.
+- Image URLs are valid and relevant.
+- Mermaid blocks are present where useful and are syntactically reasonable.
+- No blocked 30-day source/topic/scenario reuse occurred.
+- The index points to the exact latest GitHub Pages URL.
+- The ledger contains the completed run only after all validation passes.
+
+If any required validation fails, do not email a success message. Correct the report and validate again; if it still cannot be validated, report failure explicitly.
+
+## Email Delivery
+Only after successful validation, send an HTML email using the connected Gmail account to BOTH:
+- mikewissa@yahoo.com
+- mwissa@osidigital.com
+
+The email must include:
+- The exact visible, copyable GitHub Pages URL to the report.
+- The 12 lesson titles and concise summaries.
+- Validation results.
+- 30-day uniqueness status.
+- The report generation date/time.
+
+Confirm Gmail reports the message as SENT before reporting the run as successful.
+
+## Success Criteria
+A run is successful only when:
+1. The current official certification blueprint has been checked.
+2. 30-day uniqueness has been enforced.
+3. The full standalone report has been generated.
+4. The report, index, and ledger have been committed to `main`.
+5. The committed files have been fetched back and validated.
+6. The GitHub Pages link is exact.
+7. The validation passes.
+8. The Gmail message has been sent to both recipients and confirmed as SENT.
+
+If any of these conditions are not met, do not claim full success.
