@@ -3,5 +3,67 @@
   "repository": "ccaiccie/gcp-networking",
   "rolling_blocklist_days": 30,
   "description": "Rolling uniqueness ledger for the daily Google Cloud Professional Cloud Network Engineer study report. Add entries only after a fully validated successful run.",
-  "runs": []
+  "runs": [
+    {
+      "run_date": "2026-09-04",
+      "report_filename": "GCP_Professional_Cloud_Network_Engineer_Daily_Study_Quiz_2026-09-04-19-55.html",
+      "blueprint_weights": [21, 20, 16, 16, 14, 13],
+      "question_distribution": [11, 10, 8, 8, 7, 6],
+      "lesson_names": [
+        "Shared VPC and Private Service Connect",
+        "IP architecture, private access, and route-domain planning",
+        "Cloud Router BGP, MED, advertisements, and BFD",
+        "Network Connectivity Center topology",
+        "GKE networking",
+        "Cloud Load Balancing: proxy versus passthrough",
+        "Cloud DNS hybrid resolution",
+        "Interconnect availability and HA VPN over Interconnect",
+        "Hybrid convergence and failure detection",
+        "Network Intelligence Center troubleshooting",
+        "Cloud NGFW, hierarchy, and secure tags",
+        "Google Cloud Armor"
+      ],
+      "primary_urls": [
+        "https://docs.cloud.google.com/vpc/docs/private-service-connect-deployments",
+        "https://cloud.google.com/vpc/docs/vpc",
+        "https://docs.cloud.google.com/network-connectivity/docs/router/how-to/configuring-bfd?hl=en",
+        "https://docs.cloud.google.com/network-connectivity/docs/network-connectivity-center/concepts/data-transfer",
+        "https://docs.cloud.google.com/kubernetes-engine/docs/best-practices/networking",
+        "https://docs.cloud.google.com/load-balancing/docs/passthrough-network-load-balancer",
+        "https://cloud.google.com/dns/docs/overview",
+        "https://docs.cloud.google.com/network-connectivity/docs/interconnect/concepts/ha-vpn-interconnect",
+        "https://docs.cloud.google.com/network-intelligence-center/docs/connectivity-tests/concepts/overview",
+        "https://docs.cloud.google.com/firewall/docs/use-tags-for-firewalls",
+        "https://docs.cloud.google.com/armor/docs/cloud-armor-overview?hl=en"
+      ],
+      "topic_fingerprints": [
+        "shared-vpc-psc-governance",
+        "vpc-ip-private-access-mtu",
+        "cloud-router-bgp-bfd",
+        "ncc-spokes-transitivity",
+        "gke-vpc-native-private-dataplane-v2",
+        "load-balancing-proxy-passthrough-dsr",
+        "cloud-dns-hybrid-forwarding-peering",
+        "interconnect-ha-vpn-encryption-sla",
+        "hybrid-convergence-failure-detection",
+        "nic-connectivity-tests-flow-analyzer",
+        "cloud-ngfw-hierarchy-secure-tags",
+        "cloud-armor-waf-ddos-rate-limit"
+      ],
+      "scenario_fingerprints": [
+        "central-network-governance-distributed-projects",
+        "private-gke-egress-and-address-growth",
+        "bfd-supported-vlan-not-ha-vpn",
+        "ncc-site-to-site-google-backbone",
+        "source-ip-preservation-load-balancing",
+        "hybrid-dns-query-path",
+        "encrypted-interconnect-two-router-tiers",
+        "bgp-up-data-path-still-failing",
+        "historical-flow-current-config-test",
+        "hierarchical-firewall-delegation",
+        "layered-armor-ngfw-security"
+      ],
+      "validation_status": "passed"
+    }
+  ]
 }
