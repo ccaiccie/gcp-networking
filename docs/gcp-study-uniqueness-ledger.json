@@ -94,6 +94,104 @@
         "same_day_replacement": true
       },
       "validation_status": "passed"
+    },
+    {
+      "run_date": "2026-09-05",
+      "report_filename": "GCP_Professional_Cloud_Network_Engineer_Daily_Study_Quiz_2026-09-05-08-00.html",
+      "blueprint_weights": [21,20,16,16,14,13],
+      "question_distribution": [11,10,8,8,7,6],
+      "lesson_names": [
+        "Network Service Tiers: Premium versus Standard is a routing decision, not just a price switch",
+        "IPv6 in Google Cloud VPC: subnet stack type, access type, /64 and /96 behavior",
+        "Policy-based routing and route evaluation: how to steer selected traffic to inspection",
+        "Public Cloud NAT: distributed NAT, ports, NAT44/NAT64, and failure modes",
+        "Private NAT: overlapping-address avoidance, NCC/Hybrid NAT, and NAT64",
+        "Cloud CDN: cache keys, cache modes, invalidation, and origin protection",
+        "Cross-Cloud Interconnect: dedicated multicloud connectivity and the shared-responsibility boundary",
+        "Cross-Site Interconnect: using Google’s network to connect on-premises sites without a VPC in the data path",
+        "VPC Flow Logs: sampling, aggregation, metadata, organization scope, and evidence quality",
+        "Packet Mirroring with Network Security Integration: out-of-band full-packet inspection",
+        "VPC Service Controls: service perimeters, ingress/egress rules, dry run, and data-exfiltration defense",
+        "Secure Web Proxy: identity-aware egress, TLS inspection, explicit/PSC/next-hop deployment"
+      ],
+      "primary_urls": [
+        "https://docs.cloud.google.com/network-tiers/docs/overview",
+        "https://docs.cloud.google.com/vpc/docs/subnets",
+        "https://docs.cloud.google.com/vpc/docs/routes",
+        "https://docs.cloud.google.com/nat/docs/public-nat",
+        "https://docs.cloud.google.com/nat/docs/private-nat",
+        "https://docs.cloud.google.com/cdn/docs",
+        "https://docs.cloud.google.com/network-connectivity/docs/interconnect/concepts/cci-overview",
+        "https://docs.cloud.google.com/network-connectivity/docs/interconnect/how-to/cross-site/provisioning-overview",
+        "https://docs.cloud.google.com/vpc/docs/using-flow-logs",
+        "https://docs.cloud.google.com/network-security-integration/docs/out-of-band/out-of-band-integration-overview",
+        "https://docs.cloud.google.com/vpc-service-controls/docs",
+        "https://docs.cloud.google.com/secure-web-proxy/docs/overview"
+      ],
+      "supporting_urls": [
+        "https://docs.cloud.google.com/vpc/docs/create-modify-vpc-networks",
+        "https://docs.cloud.google.com/cdn/docs/cache-invalidation-overview",
+        "https://docs.cloud.google.com/cdn/docs/setting-up-cdn-with-bucket",
+        "https://docs.cloud.google.com/network-connectivity/docs/interconnect/concepts/cross-site-locations",
+        "https://docs.cloud.google.com/vpc/docs/about-flow-logs-records",
+        "https://docs.cloud.google.com/network-security-integration/docs/out-of-band/endpoint-groups-overview",
+        "https://docs.cloud.google.com/vpc-service-controls/docs/access-level-design",
+        "https://docs.cloud.google.com/vpc-service-controls/docs/troubleshooting"
+      ],
+      "visual_source_urls": [
+        "https://docs.cloud.google.com/network-tiers/docs/overview",
+        "https://docs.cloud.google.com/vpc/docs/subnets",
+        "https://docs.cloud.google.com/vpc/docs/routes",
+        "https://docs.cloud.google.com/nat/docs/public-nat",
+        "https://docs.cloud.google.com/nat/docs/private-nat",
+        "https://docs.cloud.google.com/cdn/docs",
+        "https://docs.cloud.google.com/network-connectivity/docs/interconnect/concepts/cci-overview",
+        "https://docs.cloud.google.com/network-connectivity/docs/interconnect/how-to/cross-site/provisioning-overview",
+        "https://docs.cloud.google.com/vpc/docs/using-flow-logs",
+        "https://docs.cloud.google.com/network-security-integration/docs/out-of-band/out-of-band-integration-overview",
+        "https://docs.cloud.google.com/vpc-service-controls/docs",
+        "https://docs.cloud.google.com/secure-web-proxy/docs/overview"
+      ],
+      "topic_fingerprints": [
+        "network-service-tiers-premium-standard-routing",
+        "vpc-ipv6-subnet-stack-access-ula-allocation",
+        "policy-based-routing-evaluation-inspection-steering",
+        "public-cloud-nat-distributed-ports-nat44-nat64",
+        "private-nat-ncc-hybrid-nat64-private-pool",
+        "cloud-cdn-cache-keys-invalidation-origin-protection",
+        "cross-cloud-interconnect-dedicated-multicloud-sla-boundary",
+        "cross-site-interconnect-private-wan-wire-provisioning",
+        "vpc-flow-logs-sampling-aggregation-metadata",
+        "packet-mirroring-nsi-geneve-endpoint-groups",
+        "vpc-service-controls-perimeter-ingress-egress-dry-run",
+        "secure-web-proxy-egress-tls-inspection-deployment-modes"
+      ],
+      "scenario_fingerprints": [
+        "standard-tier-latency-after-cost-migration",
+        "internal-ipv6-subnet-cannot-revert-to-ipv4-only",
+        "pbr-equal-priority-inspection-ambiguity",
+        "public-nat-port-exhaustion-and-external-ip-bypass",
+        "private-nat-not-overlap-routing-solver",
+        "cdn-invalidated-before-origin-fix",
+        "cci-single-port-does-not-meet-ha-sla",
+        "cross-site-same-metro-pairing-invalid",
+        "flow-log-estimates-not-packet-capture",
+        "packet-mirroring-overlapping-cidr-vpc-identifier",
+        "vpc-sc-storage-copy-cross-perimeter-denied",
+        "swp-ipv6-only-workload-unsupported"
+      ],
+      "validation": {
+        "blueprint_checked_against_official_2026_exam_guide": "passed",
+        "comprehensive_article_coverage": "passed",
+        "visual_support_each_lesson": "passed",
+        "lesson_count": 12,
+        "question_count": 50,
+        "domain_distribution": "11/10/8/8/7/6",
+        "quiz_controls": "passed",
+        "source_role_separation": "passed",
+        "thirty_day_uniqueness": "passed"
+      },
+      "validation_status": "passed"
     }
   ]
 }
