@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "repository": "ccaiccie/gcp-networking",
+  "rolling_blocklist_days": 30,
+  "description": "Rolling uniqueness ledger for the daily Google Cloud Professional Cloud Network Engineer study report. Add entries only after a fully validated successful run.",
+  "runs": []
+}
