@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GCP Professional Cloud Network Engineer Daily Study — 2026-09-12</title>
+<style>
+body{font:16px system-ui,-apple-system,Segoe UI,sans-serif;max-width:1180px;margin:auto;padding:24px;line-height:1.58;background:#f8f9fa;color:#202124}
+header,.lesson,.panel,.q{background:white;border:1px solid #dadce0;border-radius:14px;padding:22px;margin:18px 0}
+h1{line-height:1.15} h2{color:#174ea6} h3{color:#3c4043;margin-top:1.2em}
+.domain{display:inline-block;background:#e8f0fe;color:#174ea6;border-radius:999px;padding:4px 10px;font-weight:700}
+.visual{background:#f8fbff;border-left:4px solid #1a73e8;padding:14px;margin:14px 0}
+.takeaway{background:#e6f4ea;border-left:4px solid #34a853;padding:12px;margin:12px 0}
+.src{font-size:.93rem;background:#f1f3f4;padding:10px;border-radius:9px;word-break:break-word}
+table{border-collapse:collapse;width:100%;margin:12px 0}td,th{border:1px solid #dadce0;padding:8px;vertical-align:top}th{background:#f1f3f4}
+label{display:block;padding:8px;margin:6px 0;border:1px solid #ddd;border-radius:8px}
+button{padding:11px 16px;background:#1a73e8;color:white;border:0;border-radius:8px;margin-right:8px}.ok{color:#137333}.bad{color:#b3261e}
+</style><script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script></head>
+<body>
+<header><h1>Google Cloud Professional Cloud Network Engineer — Daily Interactive Study Report</h1>
+<p><b>Generation date:</b> September 12, 2026. <b>Blueprint:</b> 21% / 20% / 16% / 16% / 14% / 13%. <b>50-question distribution:</b> 11 / 10 / 8 / 8 / 7 / 6.</p>
+<p>This report is a standalone advanced study resource. Each lesson reconstructs the selected current Google Cloud documentation into architecture, packet/control-plane behavior, caveats, failure analysis, troubleshooting, and exam takeaways, with an original teaching diagram grounded in the cited source.</p></header>
+<section class="panel"><h2>Executive study summary</h2>
+<p>Today's set focuses on performance engineering, service publication scale, container DNS and egress identity, modern GKE L4 load balancing, passthrough failover, dual-stack hybrid routing, Router appliance WAN integration, production observability, and Cloud NGFW threat prevention. The topics were selected against the repository's rolling 30-day ledger and do not reuse a blocked primary URL, lesson fingerprint, or scenario from September 4–11.</p>
+<table><tr><th>Domain</th><th>Weight</th><th>Questions</th></tr>
+<tr><td>1 Design and plan a VPC network</td><td>21%</td><td>11</td></tr>
+<tr><td>2 Implement a VPC network</td><td>20%</td><td>10</td></tr>
+<tr><td>3 Managed network services</td><td>16%</td><td>8</td></tr>
+<tr><td>4 Hybrid and multicloud</td><td>16%</td><td>8</td></tr>
+<tr><td>5 Operations</td><td>14%</td><td>7</td></tr>
+<tr><td>6 Network security</td><td>13%</td><td>6</td></tr></table></section>
+<section class="lesson" id="lesson-1">
+<h2>1. Compute Engine network bandwidth, gVNIC, and Tier_1 performance</h2>
+<p><span class="domain">Domain 1</span></p>
+<h3>Why this matters</h3>
+<p>Google Cloud network performance is governed primarily at the compute-instance level, not per IP address or ordinary vNIC. The machine series, vCPU count, physical-NIC architecture, packet size, flow count, guest driver, and whether Tier_1 networking is enabled determine the practical ceiling. Adding extra vNICs to a single-pNIC VM does not multiply its total egress entitlement.</p>
+<h3>Architecture and behavior</h3>
+<p>gVNIC is Google's optimized virtual NIC. Third-generation and later machine series generally use gVNIC, and some configurations require it. Tier_1 networking raises the per-VM bandwidth ceiling on supported second- and third-generation series. Newer network-optimized families can instead expose multiple physical NICs and much larger aggregate throughput. Traffic routed within a VPC follows different limits from traffic whose route exits the VPC through the default internet gateway; external-destination traffic also has per-flow and aggregate ceilings.</p>
+<table><tr><th>Design question</th><th>What to verify</th></tr><tr><td>Need more throughput?</td><td>Machine-series ceiling, gVNIC support, Tier_1 support, pNIC count, packet rate and flow count.</td></tr><tr><td>Multiple vNICs?</td><td>Do not assume each vNIC receives a fresh bandwidth budget on single-pNIC VMs.</td></tr><tr><td>Internet path slow?</td><td>Check the separate outside-VPC aggregate and per-flow limits, not only the VM's internal-VPC ceiling.</td></tr><tr><td>Benchmark below spec?</td><td>Validate guest offloads, queue count, MTU, packet size, competing disk I/O, and number of parallel flows.</td></tr></table>
+<h3>Failure scenario and troubleshooting</h3>
+<p>A VM with two vNICs reaches only the same throughput it had with one vNIC. That can be expected when both vNICs share one physical NIC and one per-instance egress budget. Check machine-series architecture first, then gVNIC, Tier_1, queue allocation, and whether the test is single-flow. A single flow can hit a lower ceiling than aggregate throughput across many flows.</p>
+<div class="takeaway"><b>Exam anchor:</b> bandwidth is primarily per instance and path class; more logical interfaces do not automatically mean more bandwidth.</div>
+<div class="visual"><h3>Teaching diagram</h3><div class="mermaid">flowchart LR
+A[Application] --> V[gVNIC]
+V --> P[Physical NIC / host]
+P --> G[Google VPC fabric]
+G --> I[In-VPC destination]
+G --> E[Outside-VPC destination]
+T[Tier_1] -. raises supported per-VM ceiling .-> V</div><p><b>What to notice:</b> logical vNIC count and instance bandwidth are not the same thing; the destination path class also changes applicable ceilings.</p></div>
+<p class="src"><b>Primary source:</b> <a href="https://docs.cloud.google.com/compute/docs/network-bandwidth">https://docs.cloud.google.com/compute/docs/network-bandwidth</a></p>
+</section>
+<section class="lesson" id="lesson-2"><h2>2. Private Service Connect published services: NAT, scaling, and connection lifecycle</h2><p><span class="domain">Domain 1</span></p>
+<h3>Producer model</h3><p>A producer publishes a service with a service attachment and one or more dedicated Private Service Connect NAT subnets. Consumers connect through PSC endpoints or PSC backends. The producer does not expose its routed VPC to the consumer; PSC translates consumer traffic into producer-side source addresses drawn from the service attachment's NAT subnets.</p>
+<h3>NAT and scale</h3><p>PSC service attachments perform source NAT before traffic reaches producer backends. NAT subnets are dedicated to PSC and cannot simultaneously host ordinary VMs or forwarding rules. Capacity planning must consider producer backend count, source-port availability, application connection churn, and PSC's connection-mapping behavior. Long-lived flows need keepalives if they would otherwise exceed idle timeouts.</p>
+<h3>Trust boundary</h3><p>Connection preference controls whether consumers are accepted automatically or explicitly. Because PSC is service-oriented, it reduces the blast radius compared with full network peering. Troubleshooting should separately confirm consumer endpoint state, producer acceptance, NAT-subnet capacity, load-balancer/backend health, and application response.</p>
+<table><tr><th>Symptom</th><th>Likely layer</th></tr><tr><td>Endpoint PENDING</td><td>Producer connection preference / consumer approval.</td></tr><tr><td>Accepted but no app response</td><td>Producer load balancer, backend health, firewall, or app.</td></tr><tr><td>High connection churn</td><td>Ephemeral ports / PSC NAT mapping scale / backend count.</td></tr><tr><td>Idle flows reset</td><td>Application keepalive versus PSC idle timeout behavior.</td></tr></table>
+<div class="takeaway"><b>Exam anchor:</b> PSC service publication is private service connectivity with producer-side SNAT, not routed network merger.</div>
+<div class="visual"><h3>Teaching diagram</h3><div class="mermaid">flowchart LR
+C[Consumer] --> EP[PSC endpoint/backend]
+EP --> SA[Service attachment]
+SA --> NAT[PSC NAT subnet SNAT]
+NAT --> B[Producer backend]
+B --> NAT --> EP --> C</div><p><b>What to notice:</b> the producer sees translated source addresses from the PSC NAT subnet rather than a merged consumer route domain.</p></div>
+<p class="src"><b>Primary source:</b> <a href="https://docs.cloud.google.com/vpc/docs/about-vpc-hosted-services">https://docs.cloud.google.com/vpc/docs/about-vpc-hosted-services</a></p></section>
+<section class="lesson" id="lesson-3"><h2>3. GKE service discovery with Cloud DNS scopes</h2><p><span class="domain">Domain 2</span></p>
+<h3>DNS choices</h3><p>GKE service discovery can use kube-dns or Cloud DNS. Cloud DNS is the default DNS provider for Autopilot and supports scopes that change who can resolve Kubernetes service names. Cluster scope behaves like traditional cluster-local DNS. Additive VPC scope exposes headless-service records to clients in the VPC while retaining cluster scope. VPC scope makes cluster Service DNS records resolvable across the VPC and connected hybrid networks.</p>
+<h3>Resolution path</h3><p>Pods resolve stable Service names rather than ephemeral Pod IP addresses. NodeLocal DNSCache can cache queries on each node and reduce latency/load on the upstream cluster DNS system. Multi-cluster Services extend naming across participating clusters with <code>clusterset.local</code> records.</p>
+<h3>Design caveats</h3><p>Broader scope is not automatically better. VPC-wide visibility changes naming and security assumptions and can create collisions if teams use inconsistent service names or custom cluster domains. Hybrid clients also require network reachability to the resolved endpoints, not merely successful DNS.</p>
+<div class="takeaway"><b>Exam anchor:</b> DNS visibility and packet reachability are separate questions; resolving a Service name does not guarantee routability to its endpoints.</div>
+<div class="visual"><h3>Teaching diagram</h3><div class="mermaid">flowchart LR
+P[Pod] --> N[NodeLocal DNSCache optional]
+N --> D[Cloud DNS or kube-dns]
+D --> CS[Cluster-scope records]
+D --> VS[VPC-scope records]
+VS --> H[VM / hybrid client]</div><p><b>What to notice:</b> DNS scope controls who can resolve records; routing and firewall policy still decide who can reach the returned addresses.</p></div>
+<p class="src"><b>Primary source:</b> <a href="https://docs.cloud.google.com/kubernetes-engine/docs/concepts/about-service-discovery">https://docs.cloud.google.com/kubernetes-engine/docs/concepts/about-service-discovery</a></p></section>
+<section class="lesson" id="lesson-4"><h2>4. GKE pod egress: ip-masq-agent, source preservation, and Cloud NAT</h2><p><span class="domain">Domain 2</span></p>
+<h3>Two translation layers</h3><p>For Pod traffic leaving a VPC-native cluster, GKE can translate at the node with <code>ip-masq-agent</code> and again at the VPC edge with Cloud NAT. If a destination is not in <code>nonMasqueradeCIDRs</code>, the node rewrites the Pod source to the node IP. Cloud NAT can then translate the node IP for internet egress.</p>
+<h3>Preserving Pod IPs</h3><p>If a destination matches <code>nonMasqueradeCIDRs</code>, or default SNAT is disabled, the Pod IP can remain visible outside the node. For internet egress in that design, Cloud NAT must be configured to translate the Pod secondary ranges. For on-premises networks, preserving Pod IPs requires the hybrid network to know return routes for the Pod CIDRs.</p>
+<h3>Operational failure pattern</h3><p>If on-premises firewalls expect node IPs but you preserve Pod IPs, return traffic or policy can fail. Conversely, if security tooling needs Pod identity but the node masquerades, visibility is lost. Inspect the destination against <code>nonMasqueradeCIDRs</code>, confirm the actual source on the wire, then check Cloud NAT scope and hybrid route advertisements.</p>
+<div class="takeaway"><b>Exam anchor:</b> node SNAT and Cloud NAT are distinct stages; reason about the source address after each stage.</div>
+<div class="visual"><h3>Teaching diagram</h3><div class="mermaid">flowchart LR
+P[Pod IP] --> M{Destination in nonMasqueradeCIDRs?}
+M -->|No| SNAT[Node SNAT to node IP]
+M -->|Yes| KEEP[Preserve Pod IP]
+SNAT --> NAT[Cloud NAT if internet]
+KEEP --> NAT2[Cloud NAT must cover Pod secondary range if internet]</div><p><b>What to notice:</b> the packet can be translated once at the node and again by Cloud NAT, or preserve the Pod source until the VPC edge.</p></div>
+<p class="src"><b>Primary source:</b> <a href="https://docs.cloud.google.com/kubernetes-engine/docs/how-to/pod-to-external-endpoint-connectivity">https://docs.cloud.google.com/kubernetes-engine/docs/how-to/pod-to-external-endpoint-connectivity</a></p></section>
+<section class="lesson" id="lesson-5"><h2>5. GKE LoadBalancer Services, subsetting, and backend models</h2><p><span class="domain">Domain 3</span></p>
+<h3>Controller decisions</h3><p>A GKE <code>LoadBalancer</code> Service causes the GKE controller to create Google Cloud load-balancing resources. Internal Services create internal passthrough Network Load Balancers; external Services create regional external passthrough load balancers. Modern GKE versions and clusters with subsetting use <code>GCE_VM_IP</code> NEGs rather than node instance-group backends.</p>
+<h3>Why subsetting matters</h3><p>Subsetting limits which nodes are programmed as backends for a Service, improving scalability and reducing dataplane churn. Newer GKE versions automatically enable it in more cases. Some modern <code>loadBalancerClass</code> values require subsetting and are immutable after Service creation.</p>
+<h3>Dual stack and traffic policy</h3><p>Dual-stack LoadBalancer Services create separate IPv4 and IPv6 forwarding rules and require compatible cluster and load-balancer modes. Source preservation depends on load-balancer type and Kubernetes traffic policy; do not assume every Service preserves the client address the same way.</p>
+<div class="takeaway"><b>Exam anchor:</b> know whether the Service is instance-group or NEG backed, whether subsetting is enabled, and which forwarding rules are created.</div>
+<div class="visual"><h3>Teaching diagram</h3><div class="mermaid">flowchart LR
+S[Kubernetes Service] --> C[GKE controller]
+C --> FR[Forwarding rule]
+C --> BS[Backend service]
+BS --> NEG[GCE_VM_IP NEGs with subsetting]
+FR --> NEG</div><p><b>What to notice:</b> the Kubernetes object is translated into Google Cloud forwarding and backend resources; subsetting changes how node backends are represented.</p></div>
+<p class="src"><b>Primary source:</b> <a href="https://docs.cloud.google.com/kubernetes-engine/docs/concepts/service-load-balancer-parameters">https://docs.cloud.google.com/kubernetes-engine/docs/concepts/service-load-balancer-parameters</a></p></section>
+<section class="lesson" id="lesson-6"><h2>6. Internal passthrough Network Load Balancer failover policy</h2><p><span class="domain">Domain 3</span></p>
+<h3>Primary and failover groups</h3><p>Internal passthrough Network Load Balancers can classify backend instance groups or zonal NEGs as primary or failover. Failover behavior is driven by backend health, the failover ratio, and the configured last-resort behavior. Merely adding a failover backend does not mean it is always eligible.</p>
+<h3>Failover ratio</h3><p>The ratio sets the health threshold that triggers a switch of the eligible set from primary to failover backends. Operators can also choose whether to drop traffic when all eligible backends are unhealthy and whether existing connections are drained when the active set changes.</p>
+<h3>Packet semantics</h3><p>Because the load balancer is passthrough, backends see packets addressed to the forwarding-rule IP. Server software must listen appropriately, and return routing must support direct server return semantics. Failover is therefore both a health-policy problem and a host networking problem.</p>
+<div class="takeaway"><b>Exam anchor:</b> distinguish backend health, failover eligibility, and connection-draining behavior; each answers a different availability question.</div>
+<div class="visual"><h3>Teaching diagram</h3><div class="mermaid">flowchart LR
+CL[Client] --> VIP[Internal passthrough VIP]
+VIP --> H{Primary healthy ratio}
+H -->|Above threshold| P[Primary backends]
+H -->|Below threshold| F[Failover backends]
+P --> CL
+F --> CL</div><p><b>What to notice:</b> health and the failover ratio decide the eligible backend set; connection behavior during the switch is a separate setting.</p></div>
+<p class="src"><b>Primary source:</b> <a href="https://docs.cloud.google.com/load-balancing/docs/internal/int-netlb-traffic-distribution">https://docs.cloud.google.com/load-balancing/docs/internal/int-netlb-traffic-distribution</a></p></section>
+<section class="lesson" id="lesson-7"><h2>7. Internal Application Load Balancer logging and monitoring</h2><p><span class="domain">Domain 5</span></p>
+<h3>Per-backend-service logging</h3><p>Internal Application Load Balancer request logging is enabled on backend services. If a URL map references multiple backend services, logging must be considered separately for each. Sampling controls the fraction of requests emitted to Cloud Logging; optional fields can add TLS and ORCA load-report context.</p>
+<h3>Use logs with metrics</h3><p>Request logs answer who/what/when for sampled requests, while metrics answer aggregate behavior such as request volume, latency and backend health trends. A 100% sample rate maximizes visibility but also increases log volume and cost. Lower sampling can be sufficient for baselining but may miss rare failures.</p>
+<h3>Troubleshooting workflow</h3><p>Start with frontend symptoms, correlate load-balancer response details and backend latency, then compare backend health and application logs. If only one URL path fails, inspect URL-map selection and the specific backend service. If all paths fail simultaneously, proxy subnet, firewall, health checks or regional dependencies become stronger suspects.</p>
+<div class="takeaway"><b>Exam anchor:</b> logging is configured per backend service, not once for an entire logical URL map.</div>
+<div class="visual"><h3>Teaching diagram</h3><div class="mermaid">flowchart LR
+CL[Client] --> LB[Internal ALB]
+LB --> B1[Backend service A]
+LB --> B2[Backend service B]
+B1 --> LOG[Cloud Logging sampled requests]
+B2 --> LOG
+LB --> MET[Monitoring metrics]</div><p><b>What to notice:</b> log enablement follows the backend service, while metrics and application telemetry should be correlated for incident analysis.</p></div>
+<p class="src"><b>Primary source:</b> <a href="https://cloud.google.com/load-balancing/docs/l7-internal/monitoring">https://cloud.google.com/load-balancing/docs/l7-internal/monitoring</a></p></section>
+<section class="lesson" id="lesson-8"><h2>8. Cloud Router MP-BGP and IPv6 route exchange</h2><p><span class="domain">Domain 4</span></p>
+<h3>Multiple BGP models</h3><p>Cloud Router supports IPv4-only and IPv6-only BGP sessions, plus multiprotocol BGP where one transport session can exchange both IPv4 and IPv6 NLRI. Dedicated Interconnect and HA VPN can use dual-stack designs, but support varies by connectivity product.</p>
+<h3>Control-plane separation</h3><p>Cloud Router exchanges routes; Andromeda forwards packets. An established BGP session only proves the control session is up. You must still confirm that the desired IPv6 prefixes are advertised, learned, selected, installed, and usable by the VPC dataplane.</p>
+<h3>Compatibility</h3><p>IPv6 BGP peering and route exchange are not universally available for every Cloud Router consumer. Product-specific support matters: for example, Router appliance and Cross-Cloud Interconnect have restrictions that differ from Dedicated Interconnect and HA VPN.</p>
+<div class="takeaway"><b>Exam anchor:</b> separate BGP transport family from address families exchanged; MP-BGP can carry IPv6 NLRI over an IPv4 BGP session where supported.</div>
+<div class="visual"><h3>Teaching diagram</h3><div class="mermaid">flowchart LR
+PEER[Peer router] <-->|IPv4 BGP + MP-BGP| CR[Cloud Router]
+CR -->|IPv4 and IPv6 routes| VPC[VPC control plane]
+VPC --> DP[Andromeda dataplane]
+DP --> W[Dual-stack workloads]</div><p><b>What to notice:</b> BGP transport and advertised address family can differ; packet forwarding still happens in the VPC dataplane.</p></div>
+<p class="src"><b>Primary source:</b> <a href="https://docs.cloud.google.com/network-connectivity/docs/router/concepts/overview">https://docs.cloud.google.com/network-connectivity/docs/router/concepts/overview</a></p></section>
+<section class="lesson" id="lesson-9"><h2>9. NCC Router appliance spokes and site-to-site data transfer</h2><p><span class="domain">Domain 4</span></p>
+<h3>Use case</h3><p>Router appliance spokes let third-party SD-WAN routers, firewalls, and other BGP-capable NVAs participate in Network Connectivity Center. Customer sites commonly reach Router appliance VMs through SD-WAN overlays or IPsec, while the appliances peer with Cloud Router inside Google Cloud.</p>
+<h3>Route propagation</h3><p>When site-to-site data transfer is enabled, routes learned from one site can be exchanged through the NCC hub to another eligible spoke. In multi-region designs, the VPC's dynamic routing mode matters. Google documents global dynamic routing for topologies where Cloud Routers in different regions need to exchange learned routes.</p>
+<h3>Failure analysis</h3><p>A tunnel from the branch to the appliance can be healthy while BGP to Cloud Router is down, or BGP can be healthy while the SD-WAN overlay is broken. Troubleshoot the overlay, appliance forwarding, Cloud Router session, learned routes, NCC spoke status, and return path independently.</p>
+<div class="takeaway"><b>Exam anchor:</b> Router appliance adds a vendor NVA into NCC; Cloud Router remains the BGP control-plane integration point.</div>
+<div class="visual"><h3>Teaching diagram</h3><div class="mermaid">flowchart LR
+S1[Branch A] --> RA1[Router appliance A]
+RA1 <-->|BGP| CR1[Cloud Router A]
+CR1 --> HUB[NCC hub]
+HUB --> CR2[Cloud Router B]
+CR2 <-->|BGP| RA2[Router appliance B]
+RA2 --> S2[Branch B]</div><p><b>What to notice:</b> branch overlay health, appliance forwarding, Cloud Router BGP, and NCC participation are separate failure domains.</p></div>
+<p class="src"><b>Primary source:</b> <a href="https://docs.cloud.google.com/network-connectivity/docs/network-connectivity-center/concepts/data-transfer-topology">https://docs.cloud.google.com/network-connectivity/docs/network-connectivity-center/concepts/data-transfer-topology</a></p></section>
+<section class="lesson" id="lesson-10"><h2>10. Network Connectivity Center logs and metrics</h2><p><span class="domain">Domain 5</span></p>
+<h3>What to observe</h3><p>NCC operations should distinguish hub/spoke control state from the health of underlying connectivity resources. Logs record administrative and service events; metrics help track traffic and resource behavior. For Router appliance designs, the underlying VM, Cloud Router/BGP and overlay telemetry remain equally important.</p>
+<h3>Troubleshooting method</h3><p>When a branch-to-branch flow fails, first check spoke status and whether the resource is associated with the expected hub. Then check the underlying VPN, VLAN attachment or Router appliance resource and finally verify routes. Use timestamps to correlate topology changes with BGP resets or traffic drops.</p>
+<h3>Design for observability</h3><p>Operational maturity requires labels, consistent resource naming, baseline dashboards and alert thresholds before an outage. A hub showing ACTIVE does not prove each application path is healthy; pair NCC telemetry with path tests and application-level monitoring.</p>
+<div class="takeaway"><b>Exam anchor:</b> NCC is orchestration. Always correlate NCC state with telemetry from the underlying spoke resource and dataplane path.</div>
+<div class="visual"><h3>Teaching diagram</h3><div class="mermaid">flowchart LR
+U[User symptom] --> NCC[NCC hub/spoke state]
+NCC --> R[Underlying VPN / Interconnect / Router appliance]
+R --> B[BGP and routes]
+B --> P[Path test]
+P --> A[Application telemetry]</div><p><b>What to notice:</b> effective troubleshooting moves from orchestration state down through the actual connectivity resource, routes, and application path.</p></div>
+<p class="src"><b>Primary source:</b> <a href="https://docs.cloud.google.com/network-connectivity/docs/network-connectivity-center/how-to/viewing-logs-metrics">https://docs.cloud.google.com/network-connectivity/docs/network-connectivity-center/how-to/viewing-logs-metrics</a></p></section>
+<section class="lesson" id="lesson-11"><h2>11. Cloud NGFW intrusion detection and prevention service</h2><p><span class="domain">Domain 6</span></p>
+<h3>Architecture</h3><p>Cloud NGFW Enterprise IDPS uses Google-managed zonal firewall endpoints and packet-intercept technology to inspect selected workload traffic. Threat prevention capabilities are powered by Palo Alto Networks signatures and include anti-spyware, vulnerability protection and antivirus categories.</p>
+<h3>Policy objects</h3><p>Threat-prevention security profiles define signature behavior. A security profile group references the profile and is then applied by a firewall policy rule whose action sends matching traffic through the inspection endpoint. This separates traffic selection from threat-policy behavior.</p>
+<h3>TLS and operations</h3><p>Encrypted traffic requires a compatible TLS-inspection design if content inspection is required. Troubleshooting should verify endpoint health, policy association, rule priority, security profile group, TLS inspection where used, threat logs, and whether the application protocol is supported.</p>
+<div class="takeaway"><b>Exam anchor:</b> IDPS requires both traffic steering to a firewall endpoint and a threat-prevention policy; one without the other is incomplete.</div>
+<div class="visual"><h3>Teaching diagram</h3><div class="mermaid">flowchart LR
+W[Workload traffic] --> R[Firewall policy rule]
+R -->|apply security profile group| EP[Firewall endpoint]
+EP --> TP[Threat-prevention profile]
+TP -->|allow/block| D[Destination]</div><p><b>What to notice:</b> policy selects traffic, the endpoint performs inspection, and the threat-prevention profile determines signature handling.</p></div>
+<p class="src"><b>Primary source:</b> <a href="https://docs.cloud.google.com/firewall/docs/about-intrusion-prevention">https://docs.cloud.google.com/firewall/docs/about-intrusion-prevention</a></p></section>
+<section class="lesson" id="lesson-12"><h2>12. Cloud NGFW policy objects: Threat Intelligence, geolocation, and network context</h2><p><span class="domain">Domain 6</span></p>
+<h3>Dynamic match objects</h3><p>Modern firewall policies can match more than static CIDRs. Rules can reference Google Threat Intelligence lists, geolocation objects, FQDN/domain objects, address groups, secure tags and network context. Support depends on firewall policy type, direction and target type.</p>
+<h3>Why it changes operations</h3><p>Google-managed Threat Intelligence lists reduce the need to manually curate known-malicious addresses. Geolocation expresses country/region policy without hand-maintained IP blocks. Network context can constrain a rule based on security boundary semantics such as INTERNET versus NON_INTERNET.</p>
+<h3>Policy evaluation</h3><p>Rule priority still matters. Dynamic objects do not remove the need to understand evaluation order, targets, protocol/port scope and actions. A broad allow at a higher priority can make a lower-priority threat-intelligence deny ineffective.</p>
+<div class="takeaway"><b>Exam anchor:</b> dynamic objects simplify matching, but firewall-rule priority and policy scope still decide what action is enforced.</div>
+<div class="visual"><h3>Teaching diagram</h3><div class="mermaid">flowchart TD
+PKT[Packet] --> PRI[Highest-priority matching rule]
+PRI --> OBJ{Match object}
+OBJ --> TI[Threat Intelligence]
+OBJ --> GEO[Geolocation]
+OBJ --> NC[Network context]
+OBJ --> TAG[Secure tags / FQDN / address groups]
+TI --> ACT[Rule action]
+GEO --> ACT
+NC --> ACT
+TAG --> ACT</div><p><b>What to notice:</b> dynamic match objects enrich policy expression but do not change first-match priority semantics.</p></div>
+<p class="src"><b>Primary source:</b> <a href="https://docs.cloud.google.com/firewall/docs/firewall-policies-rule-details">https://docs.cloud.google.com/firewall/docs/firewall-policies-rule-details</a></p></section>
+<section class="panel"><h2>Expert memory anchors</h2><ul>
+<li>Compute network ceilings are primarily per instance/path class; multiple logical vNICs do not automatically multiply bandwidth.</li>
+<li>PSC published services use dedicated producer-side NAT subnets and explicit producer/consumer connection state.</li>
+<li>GKE DNS visibility scope and dataplane reachability are separate questions.</li>
+<li>ip-masq-agent and Cloud NAT can perform two distinct source-NAT stages.</li>
+<li>GKE subsetting changes the backend representation and scale behavior of LoadBalancer Services.</li>
+<li>Passthrough NLB failover depends on health, failover ratio, and connection handling—not simply the existence of standby VMs.</li>
+<li>Cloud Router is control plane; Andromeda forwards the packets.</li>
+<li>NCC Router appliances join third-party BGP-capable NVAs to the hub-and-spoke control model.</li>
+<li>Load-balancer logging is backend-service scoped and should be correlated with metrics.</li>
+<li>Cloud NGFW IDPS needs both inspection steering and threat-prevention policy.</li>
+</ul></section>
+<section class="panel"><h2>50-question interactive exam</h2>
+<p>Answers are randomized. Select one answer for every question and choose <b>Grade exam</b>. The page reveals the correct answer and explanation for each question.</p>
+<div id="score"></div><button onclick="grade()">Grade exam</button><button onclick="resetQ()">Reset</button></section>
+<div id="quiz"></div>
+<section class="panel"><h2>Validation notes</h2>
+<p><b>Primary sources:</b> current official Google Cloud documentation linked in each lesson. <b>Teaching visuals:</b> original Mermaid diagrams based on those sources. No community source overrides official documentation.</p>
+<p><b>Uniqueness:</b> selected after checking the rolling repository ledger covering September 4–11. <b>Blueprint:</b> current September 2026 baseline 21/20/16/16/14/13 with 50-question distribution 11/10/8/8/7/6.</p></section>
+<script>
+const Q=[
+{"domain":1,"prompt":"A VM has two ordinary vNICs but uses a single physical NIC. What should you expect about total egress bandwidth?","correct":"The vNICs generally share the VM's per-instance bandwidth budget","wrong":["Each vNIC receives the full machine-type bandwidth independently","Bandwidth doubles only when both vNICs use the same subnet","The VM is limited to 1 Gbps regardless of machine type"],"explanation":"Google Cloud primarily accounts bandwidth per compute instance; extra logical vNICs do not automatically multiply a single-pNIC VM's budget."},
+{"domain":1,"prompt":"Which interface is Google's optimized virtual NIC for high-performance Compute Engine networking?","correct":"gVNIC","wrong":["VirtIO-SCSI","Cloud NAT NIC","Andromeda bridge"],"explanation":"gVNIC is Google's optimized virtual network interface."},
+{"domain":1,"prompt":"A single TCP flow underperforms although aggregate multi-flow testing is high. What should you check?","correct":"Per-flow limits in addition to the per-instance ceiling","wrong":["DNSSEC key rotation","VPC firewall logging sample rate","PSC consumer accept lists"],"explanation":"Single-flow ceilings can be lower than aggregate instance throughput."},
+{"domain":1,"prompt":"What does Tier_1 networking change on supported VM families?","correct":"It raises the supported per-VM networking performance ceiling","wrong":["It changes Standard Tier internet routes to Premium Tier","It creates a second VPC automatically","It disables packet-per-second limits"],"explanation":"Tier_1 is a per-VM network performance option, not Network Service Tiers."},
+{"domain":1,"prompt":"A PSC producer publishes a service. Where does producer-side source NAT draw addresses from?","correct":"Dedicated PSC NAT subnets attached to the service attachment","wrong":["The consumer's primary subnet","Cloud NAT public addresses","The producer VM's alias IP range"],"explanation":"Published PSC services use dedicated producer-side PSC NAT subnets for SNAT."},
+{"domain":1,"prompt":"Can a PSC NAT subnet also be used for ordinary VM instances?","correct":"No, PSC NAT subnets are dedicated to PSC service attachments","wrong":["Yes, if the VM has no external IP","Yes, but only for IPv6","Only when the endpoint is global"],"explanation":"PSC NAT subnets are dedicated infrastructure ranges."},
+{"domain":1,"prompt":"A PSC endpoint remains PENDING. Which layer should be checked first?","correct":"Producer connection preference and consumer acceptance state","wrong":["Tier_1 queue count","GKE NodeLocal DNSCache","Cloud Router BFD"],"explanation":"PENDING is a PSC connection-state issue before backend dataplane troubleshooting."},
+{"domain":1,"prompt":"Why can application keepalives matter for PSC published services?","correct":"They can prevent long-lived idle connections from aging out of PSC NAT mappings","wrong":["They increase the producer's VPC MTU","They enable BGP multipath","They change PSC endpoints into backends"],"explanation":"PSC has defined idle timeouts; periodic traffic can keep long-lived sessions active."},
+{"domain":1,"prompt":"Which statement best distinguishes PSC service publication from VPC peering?","correct":"PSC exposes a service without merging the two VPC route domains","wrong":["PSC automatically imports all custom routes","PSC requires transitive peering","PSC only works with public IP addresses"],"explanation":"PSC is service-oriented private connectivity."},
+{"domain":1,"prompt":"A benchmark is below a VM's theoretical network maximum. Which factor is relevant?","correct":"Packet size, flow count, guest offloads, and competing network/disk use","wrong":["Cloud DNS zone visibility only","The number of firewall policy folders","Whether the project has a default network"],"explanation":"The documented maximum is not a guarantee and several host/guest/workload factors affect realized throughput."},
+{"domain":1,"prompt":"For the highest supported VM network performance, which design check is most important?","correct":"Choose a machine series and NIC architecture that actually supports the required bandwidth","wrong":["Add many secondary IPs to one NIC","Create multiple Cloud Routers","Use a larger DNS TTL"],"explanation":"Performance starts with the supported machine/pNIC/gVNIC architecture."},
+{"domain":2,"prompt":"What is the default Cloud DNS scope behavior for GKE cluster DNS?","correct":"Cluster scope","wrong":["Organization scope","Internet scope","Folder scope"],"explanation":"Cluster scope provides Kubernetes DNS records only within the cluster."},
+{"domain":2,"prompt":"What does GKE additive VPC DNS scope extend beyond cluster scope?","correct":"Resolution of headless Services to clients in the VPC while retaining cluster scope","wrong":["Public internet resolution for every Service","Automatic BGP advertisement of Pod CIDRs","Cloud Armor protection for DNS"],"explanation":"Additive VPC scope extends selected service discovery into the VPC."},
+{"domain":2,"prompt":"Which DNS scope makes GKE Service records resolvable throughout the VPC and connected hybrid networks?","correct":"VPC scope","wrong":["Node scope","Regional scope","Pod scope"],"explanation":"VPC scope publishes Service DNS visibility across the VPC."},
+{"domain":2,"prompt":"What is NodeLocal DNSCache intended to improve?","correct":"DNS lookup latency and load on the upstream cluster DNS provider","wrong":["Cloud Router convergence","PSC NAT capacity","Load balancer failover"],"explanation":"It caches DNS locally on each node."},
+{"domain":2,"prompt":"A Pod sends to a destination not in nonMasqueradeCIDRs. What normally happens first?","correct":"The node can SNAT the Pod source to the node IP","wrong":["Cloud Router rewrites the source AS","Cloud DNS changes the destination IP","The load balancer applies PROXY protocol"],"explanation":"ip-masq-agent performs node-level source translation based on the destination list."},
+{"domain":2,"prompt":"If Pod IPs are preserved for internet egress, what must Cloud NAT be able to translate?","correct":"The GKE Pod secondary IP range","wrong":["Only the control-plane endpoint","Only the node's external IP","The Service ClusterIP range only"],"explanation":"Preserved Pod sources require Cloud NAT coverage of the secondary range."},
+{"domain":2,"prompt":"Why does preserving Pod IPs matter for hybrid networks?","correct":"On-premises routing and policy must understand return paths to Pod CIDRs","wrong":["It removes the need for Cloud Router","It makes all Pods public","It disables Kubernetes Services"],"explanation":"Source preservation exposes Pod CIDRs beyond the node boundary."},
+{"domain":2,"prompt":"A security appliance sees node IPs instead of Pod IPs. Which component is the first suspect?","correct":"ip-masq-agent SNAT behavior","wrong":["Cloud Armor rate limiting","PSC connection preference","NCC hub labels"],"explanation":"Node-level masquerading can replace Pod source addresses with node addresses."},
+{"domain":2,"prompt":"Which statement about GKE DNS is correct?","correct":"Successful DNS resolution does not itself guarantee packet reachability to the resolved endpoint","wrong":["DNS automatically creates firewall allows","DNS makes hybrid routes unnecessary","NodeLocal DNSCache advertises BGP prefixes"],"explanation":"Name resolution and routing/firewall reachability are separate."},
+{"domain":2,"prompt":"Multi-cluster Services use which service-discovery suffix?","correct":"clusterset.local","wrong":["google.internal","psc.local","interconnect.local"],"explanation":"MCS publishes multi-cluster service discovery under clusterset.local."},
+{"domain":3,"prompt":"With GKE subsetting, what backend model is commonly used for modern LoadBalancer Services?","correct":"GCE_VM_IP network endpoint groups","wrong":["Target pools only","Cloud Run serverless NEGs only","PSC service attachments"],"explanation":"Subsetting uses node-IP NEGs for scalable L4 load balancing."},
+{"domain":3,"prompt":"Why is GKE subsetting valuable?","correct":"It reduces the backend node set programmed for each Service and improves scale","wrong":["It converts IPv4 clusters to IPv6","It replaces health checks with DNS","It enables Cloud Router BFD"],"explanation":"Subsetting limits the node subset used by a Service."},
+{"domain":3,"prompt":"What does an internal GKE LoadBalancer Service create?","correct":"An internal passthrough Network Load Balancer","wrong":["A global external Application Load Balancer only","A Cloud VPN gateway","A PSC interface"],"explanation":"Internal LoadBalancer Services map to internal passthrough NLBs."},
+{"domain":3,"prompt":"What happens for a dual-stack LoadBalancer Service?","correct":"Separate IPv4 and IPv6 forwarding rules are created","wrong":["One anycast address carries both families without separate rules","Only IPv6 is exposed","The Service becomes a proxy load balancer"],"explanation":"Dual-stack Services use distinct forwarding rules for the two families."},
+{"domain":3,"prompt":"Internal passthrough NLB failover requires what backend classification?","correct":"At least one non-empty primary group and one non-empty failover group","wrong":["Two Cloud Routers","A proxy-only subnet","A global forwarding rule"],"explanation":"Failover needs both primary and failover backend sets."},
+{"domain":3,"prompt":"What controls when internal passthrough NLB eligible backends switch to failover?","correct":"Backend health together with the configured failover ratio","wrong":["DNS TTL only","PSC NAT port usage","Cloud Router MED only"],"explanation":"The health threshold and failover policy determine the eligible set."},
+{"domain":3,"prompt":"Why must backend software for a passthrough NLB listen appropriately for the VIP?","correct":"Packets retain the forwarding-rule destination IP when delivered to the backend","wrong":["The load balancer always terminates TLS","PROXY protocol rewrites the destination","The backend receives only loopback traffic"],"explanation":"Passthrough load balancing preserves packet destination semantics."},
+{"domain":3,"prompt":"Which failover option affects established connections when the eligible backend set changes?","correct":"Connection draining on failover","wrong":["DNS peering","BGP MD5","PSC global access"],"explanation":"Connection-draining behavior determines whether existing flows persist during a failover-set change."},
+{"domain":4,"prompt":"What does MP-BGP allow in Cloud Router where supported?","correct":"Exchange of multiple address families such as IPv4 and IPv6 over a BGP session","wrong":["Automatic IPsec encryption of every route","NAT of learned routes","DNS-based route selection"],"explanation":"MP-BGP carries multiple address-family NLRI."},
+{"domain":4,"prompt":"Who forwards packets after Cloud Router programs dynamic routes?","correct":"Google's Andromeda VPC dataplane","wrong":["The Cloud Router BGP task itself","Cloud DNS","IAM"],"explanation":"Cloud Router is control plane; Andromeda forwards traffic."},
+{"domain":4,"prompt":"Which connectivity product has IPv6 route-exchange restrictions compared with Dedicated Interconnect?","correct":"Router appliance","wrong":["Cloud Logging","Cloud Armor","Cloud CDN"],"explanation":"Router appliance is listed among products without IPv6 BGP peering/route exchange support."},
+{"domain":4,"prompt":"An IPv4 BGP session carries IPv6 NLRI. What feature is being used?","correct":"Multiprotocol BGP","wrong":["NAT64","Policy-based routing","PROXY protocol"],"explanation":"MP-BGP can exchange IPv6 routes over an IPv4 BGP session where supported."},
+{"domain":4,"prompt":"What role does a Router appliance VM play in NCC?","correct":"It provides a BGP-capable third-party NVA/SD-WAN attachment represented by an NCC spoke","wrong":["It replaces the NCC hub","It is a managed DNS resolver","It terminates Cloud Armor policies"],"explanation":"Router appliance integrates third-party virtual networking appliances with NCC."},
+{"domain":4,"prompt":"In the documented multi-region Router appliance site-to-site topology, what VPC routing mode is important?","correct":"Global dynamic routing","wrong":["Legacy only","Static-only routing","Premium DNS routing"],"explanation":"Global dynamic routing allows learned routes to be usable across regions in the topology."},
+{"domain":4,"prompt":"A branch overlay tunnel is up, but site-to-site traffic fails. What should you check next?","correct":"Router appliance forwarding, Cloud Router BGP, NCC spoke state, and learned/return routes","wrong":["Only the DNSSEC DS record","Only Cloud Armor logs","Only VM boot disk type"],"explanation":"The overlay and the Google-side BGP/routing layers can fail independently."},
+{"domain":4,"prompt":"What is required for NCC site-to-site data transfer between eligible Router appliance spokes?","correct":"The spokes must be configured for site-to-site data transfer and have valid route exchange","wrong":["A public IP on every workload","VPC Peering between the branches","Cloud CDN"],"explanation":"NCC controls whether the hybrid spokes participate in site-to-site data transfer."},
+{"domain":5,"prompt":"Where is internal Application Load Balancer request logging enabled?","correct":"On each backend service","wrong":["Only on the forwarding rule","Only on the URL map","Only on the VPC network"],"explanation":"Logging is configured per backend service."},
+{"domain":5,"prompt":"What does logConfig.sampleRate control?","correct":"The fraction of handled requests emitted as log entries","wrong":["The number of backend VMs","The BGP hold timer","The DNS TTL"],"explanation":"Sampling controls logging volume."},
+{"domain":5,"prompt":"A URL map references three backend services. What is the logging implication?","correct":"Logging may need to be enabled separately on each backend service","wrong":["One forwarding-rule switch automatically logs all backends","Only the default backend can log","Logging is impossible with URL maps"],"explanation":"The setting is backend-service scoped."},
+{"domain":5,"prompt":"Why combine load-balancer logs with metrics?","correct":"Logs provide sampled request detail while metrics show aggregate trends","wrong":["Metrics automatically contain every request body","Logs configure health checks","Metrics change firewall policy priority"],"explanation":"They answer different operational questions."},
+{"domain":5,"prompt":"When troubleshooting NCC, why is an ACTIVE hub/spoke state insufficient?","correct":"Underlying VPN, Interconnect, Router appliance, BGP, and application paths can still fail","wrong":["ACTIVE disables route exchange","ACTIVE means only IPv6 works","ACTIVE is a billing state"],"explanation":"NCC orchestration state does not prove end-to-end application health."},
+{"domain":5,"prompt":"What should be correlated when an NCC path breaks after a change?","correct":"Hub/spoke events, underlying resource state, BGP/routes, and traffic timestamps","wrong":["Only DNS cache hit rate","Only project labels","Only Cloud Armor WAF rules"],"explanation":"Correlation across control and data layers isolates the failure."},
+{"domain":5,"prompt":"What is a good observability practice before an outage?","correct":"Baseline dashboards, consistent naming/labels, and alerts for expected resource behavior","wrong":["Disable all logs to reduce noise","Wait to enable metrics until failure","Use one shared unnamed Cloud Router"],"explanation":"Operational readiness is established before incidents."},
+{"domain":6,"prompt":"Which Cloud NGFW tier provides inline intrusion detection and prevention service?","correct":"Cloud NGFW Enterprise","wrong":["Essentials only","Standard only","Cloud DNS Premium"],"explanation":"IDPS is an Enterprise capability."},
+{"domain":6,"prompt":"What infrastructure transparently inspects selected traffic for Cloud NGFW IDPS?","correct":"Google-managed zonal firewall endpoints using packet intercept","wrong":["Cloud Router BGP tasks","Cloud NAT gateways","DNS forwarding zones"],"explanation":"IDPS uses firewall endpoints in the inspection path."},
+{"domain":6,"prompt":"What security profile type is used for IDPS?","correct":"Threat prevention","wrong":["DNSSEC","Network tier","Connection draining"],"explanation":"Threat-prevention profiles control signature behavior."},
+{"domain":6,"prompt":"Which Cloud NGFW match object can use Google-managed malicious IP/domain intelligence?","correct":"Google Threat Intelligence lists","wrong":["Proxy-only subnets","Cloud Router interfaces","Service Directory namespaces"],"explanation":"Firewall policy rules can reference Google Threat Intelligence lists."},
+{"domain":6,"prompt":"What is the main benefit of geolocation objects in firewall policy?","correct":"They express country/region matching without manually maintaining all IP ranges","wrong":["They encrypt traffic by country","They create BGP communities","They assign VM hostnames"],"explanation":"Geolocation abstracts geographic IP matching."},
+{"domain":6,"prompt":"A higher-priority broad allow matches before a lower-priority threat-intelligence deny. What happens?","correct":"The higher-priority allow can make the lower deny ineffective for that traffic","wrong":["Both actions are merged","The lower deny always wins","The packet is sent to Cloud DNS"],"explanation":"Firewall rule evaluation priority still governs dynamic objects."}
+];
+let state=[];
+function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
+function render(){let h='';state=[];Q.forEach((x,i)=>{let opts=shuffle([x.correct,...x.wrong]);state.push(opts);h+=`<div class="q"><h3>Q${i+1}. [Domain ${x.domain}] ${x.prompt}</h3>`;opts.forEach((v,j)=>h+=`<label><input type="radio" name="q${i}" value="${j}"> ${v}</label>`);h+=`<div id="f${i}"></div><div id="e${i}" style="display:none"><b>Explanation:</b> ${x.explanation}</div></div>`});document.getElementById('quiz').innerHTML=h}
+function grade(){let s=0,a=0;Q.forEach((x,i)=>{let z=document.querySelector(`input[name="q${i}"]:checked`),f=document.getElementById('f'+i),e=document.getElementById('e'+i);if(z){a++;let chosen=state[i][Number(z.value)];if(chosen===x.correct){s++;f.innerHTML='<b class="ok">Correct</b>'}else{f.innerHTML='<b class="bad">Incorrect.</b> Correct answer: '+x.correct}}else{f.innerHTML='<b class="bad">Not answered</b>'}e.style.display='block'});document.getElementById('score').innerHTML=`<h3>Score: ${s}/50 (${s*2}%) — answered ${a}/50</h3>`;window.scrollTo({top:document.getElementById('score').offsetTop-20,behavior:'smooth'})}
+function resetQ(){render();document.getElementById('score').innerHTML=''}
+render();mermaid.initialize({startOnLoad:true,securityLevel:'loose'});
+</script></body></html>
