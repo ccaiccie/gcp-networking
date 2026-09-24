@@ -1,0 +1,410 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Google Cloud PCNE Daily Interactive Study Report — 2026-09-24</title>
+<style>
+:root{color-scheme:light}body{font:15.5px/1.62 system-ui,-apple-system,Segoe UI,sans-serif;max-width:1180px;margin:auto;padding:28px;color:#202124;background:#f7faff}h1,h2,h3,h4{color:#123b66;line-height:1.25}.card,.lesson,.quiz{background:#fff;border:1px solid #d9e2ef;border-radius:14px;padding:22px;margin:18px 0;box-shadow:0 2px 8px #0001}.tag{display:inline-block;background:#e8f0fe;border-radius:999px;padding:4px 9px;margin:0 5px 8px 0}.src{background:#f6f9fc;border-left:4px solid #4285f4;padding:10px}.notice{background:#fff8e1;border-left:4px solid #f9ab00;padding:10px}.take{background:#eef8f0;border-left:4px solid #34a853;padding:10px}.ok{color:#137333;font-weight:700}.warn{color:#b06000;font-weight:700}table{width:100%;border-collapse:collapse;margin:10px 0}th,td{border:1px solid #d8dee8;padding:8px;vertical-align:top}th{background:#eef4fb}pre.mermaid{background:#f5f8fc;border:1px solid #dce6f2;border-radius:10px;padding:12px;overflow:auto}pre.code{background:#f6f8fa;border:1px solid #ddd;border-radius:8px;padding:12px;overflow:auto}code{background:#f1f3f4;padding:2px 4px;border-radius:4px}.q{border-top:1px solid #ddd;padding:15px 0}.feedback{margin-top:8px;padding:9px;border-radius:8px;background:#f6f8fa}.right{background:#e6f4ea}.wrong{background:#fce8e6}button{padding:10px 16px;border:0;border-radius:8px;background:#1a73e8;color:#fff;font-weight:700;cursor:pointer}a{color:#145db2}li{margin:.3em 0}.small{font-size:.92em;color:#5f6368}.score{font-size:1.2em;font-weight:700;margin-top:15px}
+</style>
+<script type="module">import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';mermaid.initialize({startOnLoad:true,theme:'neutral',securityLevel:'strict'});</script>
+</head>
+<body>
+<h1>Google Cloud Professional Cloud Network Engineer — Daily Interactive Study Report</h1>
+<div class="card">
+<p><b>Generated:</b> September 24, 2026 08:28 PDT</p>
+<p><b>Blueprint verification:</b> the current official Professional Cloud Network Engineer certification page and official exam guide were checked today. The official guide still contains <b>six domains</b>: Designing and planning a Google Cloud VPC network (~21%), Implementing a VPC network (~20%), Configuring managed network services (~16%), Configuring and implementing hybrid and multi-cloud network interconnectivity (~16%), Managing, monitoring, and troubleshooting network operations (~14%), and Configuring, implementing, and managing a cloud network security solution (~13%). This report therefore uses the required 50-question distribution of <b>11 / 10 / 8 / 8 / 7 / 6</b>.</p>
+<p><a href="https://cloud.google.com/learn/certification/cloud-network-engineer">Official certification page</a> · <a href="https://services.google.com/fh/files/misc/042426_professional_cloud_network_engineer_exam_guide_english.pdf">Current official exam guide</a></p>
+<h3>Executive study summary</h3>
+<p>Today's report concentrates on less-obvious controls and operational behaviors that frequently separate a merely working design from a supportable production network: organization-level control of VM external IPv4 addresses, multi-project load-balancer resource ownership, cross-project TLS policy attachment, HTTP/3 edge behavior, backend HTTP/2 connection economics, stable BGP router identifiers, Partner Interconnect ASN constraints, the single-region 99.99% Dedicated Interconnect topology, a newly released Connectivity Tests capability for Google Threat Intelligence firewall rules, and two new Cloud Armor control surfaces. The final lesson treats GKE Gateway Policy resources as infrastructure controls rather than Kubernetes annotations.</p>
+<p class="notice"><b>30-day uniqueness gate:</b> the repository ledger through September 23, 2026 was checked before topic selection. The selected lesson fingerprints are intentionally narrower than previously covered subjects. In particular, this report does not repeat generic Connectivity Tests, generic GKE Gateway API, generic SSL-policy tuning, generic Partner Interconnect, or generic Dedicated Interconnect redundancy; it focuses on newly released or previously unrepresented control-plane behaviors, constraints, and failure modes.</p>
+</div>
+
+<section class="lesson" data-domain="1,6">
+<h2>1. External IPv4 governance with <code>constraints/compute.vmExternalIpAccess</code></h2>
+<span class="tag">Domain 1 — Design and planning</span><span class="tag">Domain 6 — Network security</span>
+<div class="src"><b>Primary authoritative source:</b> <a href="https://docs.cloud.google.com/compute/docs/ip-addresses/configure-static-external-ip-address">Compute Engine — Configure static external IP addresses</a><br><b>Supporting operational source:</b> <a href="https://docs.cloud.google.com/kubernetes-engine/docs/troubleshooting/cluster-creation">GKE — Troubleshoot cluster creation</a></div>
+<h3>Problem and policy boundary</h3>
+<p>Giving a VM an external IPv4 address creates a direct internet-reachable network edge and increases the number of resources that must be hardened and monitored. The list constraint <code>constraints/compute.vmExternalIpAccess</code> lets an organization, folder, or project restrict which Compute Engine VM instances may have external IP addresses. The control is resource-governance rather than packet filtering: it prevents a disallowed VM configuration from being created or expanded; it is not a substitute for firewall policy, Cloud Armor, identity controls, or egress inspection.</p>
+<p>The constraint can use an allowlist of fully qualified VM resource paths, a denylist, or deny-all. An allowlist is useful for an exception-driven design such as explicitly approved bastions. Google documents the constraint as non-retroactive, so policy rollout must include an inventory and remediation plan for existing external addresses rather than assuming the policy removes them.</p>
+<pre class="mermaid">flowchart LR
+O[Organization policy] --> E{VM permitted?}
+E -->|Allowlisted| V[VM may receive external IPv4]
+E -->|Not allowlisted| X[Provision/update denied]
+V --> F[VPC firewall + host hardening]
+V --> I[Internet]
+P[Private VM] --> N[Cloud NAT or controlled proxy for egress]
+</pre>
+<p><b>What to notice:</b> the organization policy is evaluated at configuration time. A private VM can still reach the internet through a governed egress service such as Cloud NAT without owning a public address.</p>
+<h3>Hierarchy, exceptions, and managed-workload impact</h3>
+<p>Policy can be set at different Resource Manager levels, so troubleshooting starts with the <em>effective</em> policy, not merely the project-local setting. The allowlist value identifies a VM by project, zone, and instance name. In Shared VPC designs, remember that worker VMs belong to service projects even though their NICs use subnets from a host project.</p>
+<p>A major operational caveat is autoscaling. If a managed instance group or a public GKE cluster is designed to create VMs with external addresses, a restrictive policy can stop new members from being created. Google specifically documents public GKE cluster creation failures when the policy blocks node external addresses; the remedy can require changing the effective policy and recreating the failed cluster rather than repairing the incomplete cluster.</p>
+<table><tr><th>Design</th><th>Benefit</th><th>Failure mode to anticipate</th></tr><tr><td>Deny all VM external IPs</td><td>Smallest direct internet attack surface</td><td>Public-node or legacy VM workflows fail unless redesigned</td></tr><tr><td>Allowlist approved VMs</td><td>Explicit exception model</td><td>Autoscaled instances have dynamic names and do not fit a static exception model well</td></tr><tr><td>Private VM + Cloud NAT</td><td>Internet egress without public VM addressing</td><td>Requires NAT sizing, logging, route, and firewall design</td></tr></table>
+<h3>Verified configuration pattern and troubleshooting</h3>
+<p>Google documents a policy file containing the constraint and <code>listPolicy.allowedValues</code>, followed by <code>gcloud resource-manager org-policies set-policy</code>. A deny-all policy uses <code>listPolicy.allValues: DENY</code>. Before rollout, inventory public VM interfaces and identify managed services that expect public nodes. After rollout, validate effective policy at each exception project and test both a permitted and a denied deployment.</p>
+<p><b>Scenario:</b> a security team applies deny-all at the organization and the next GKE public cluster creation fails. Firewall debugging is a distraction: the node VM never receives the required external address. Either use an architecture compatible with private nodes or change the effective organization policy where that public-node design is intentionally allowed.</p>
+<p class="take"><b>Exam/interview anchor:</b> organization policy controls whether the resource may have the address; firewall policy controls traffic to and from an address that exists.</p>
+</section>
+
+<section class="lesson" data-domain="1,3">
+<h2>2. Cross-project Application Load Balancer service referencing</h2>
+<span class="tag">Domain 1 — Design and planning</span><span class="tag">Domain 3 — Managed network services</span>
+<div class="src"><b>Primary authoritative source:</b> <a href="https://docs.cloud.google.com/load-balancing/docs/https/set-up-global-ext-https-shared-vpc">Set up a global external Application Load Balancer with Shared VPC</a><br><b>Supporting architecture source:</b> <a href="https://docs.cloud.google.com/load-balancing/docs/https">External Application Load Balancer overview</a></div>
+<h3>Why separate frontend ownership from service ownership?</h3>
+<p>Cross-project service referencing allows a load balancer's forwarding rule, target proxy, and URL map to live in a central project while a URL map references backend services owned by other projects. This creates a useful operating model: the platform or network team owns the public entry point, certificates, and routing policy, while application teams own backend services and the workloads behind them.</p>
+<p>The backend service remains coupled to its own backend resources and health checks. Google requires a backend service and its referenced backends to be defined in the same project, and health checks associated with that backend service are also kept with it. The cross-project boundary is therefore between the URL-map/frontend side and the backend-service side, not arbitrarily between every load-balancing resource.</p>
+<pre class="mermaid">flowchart LR
+C[Client] --> F[Frontend + target proxy\nProject A]
+F --> U[URL map\nProject A]
+U -->|cross-project reference| B[Backend service\nProject B]
+B --> H[Health check\nProject B]
+B --> W[Backends\nProject B]
+IAM[roles/compute.loadBalancerServiceUser] -. authorizes use .-> B
+</pre>
+<p><b>What to notice:</b> IAM authorization to <em>use</em> the backend service is the bridge across project ownership; moving the backend itself to the frontend project is not required.</p>
+<h3>IAM, organization policy, and naming</h3>
+<p>The project that owns a backend service must authorize the load-balancer administrator to reference it, typically with <code>roles/compute.loadBalancerServiceUser</code>, which includes the relevant use permission. This can be granted narrowly at the resource level when governance requires it. Organization policy can further restrict cross-project service references. Classic Application Load Balancers do not support this deployment model.</p>
+<p>Because same-named backend services can exist in different projects, Google recommends unique backend service names across an organization when cross-project references are used. This reduces operator ambiguity during incident response and URL-map review.</p>
+<table><tr><th>Resource</th><th>Central/project A</th><th>Service/project B</th></tr><tr><td>Forwarding rule / target proxy</td><td>Yes</td><td>No</td></tr><tr><td>URL map</td><td>Yes</td><td>No</td></tr><tr><td>Backend service</td><td>Reference only</td><td>Owned here</td></tr><tr><td>Backend + health check</td><td>No</td><td>Stay with backend service</td></tr></table>
+<h3>Packet flow and troubleshooting</h3>
+<p>The data plane is still normal proxy load balancing: a client session terminates at Google's load-balancing infrastructure, the URL map selects the backend service, and the load balancer establishes a backend connection according to the backend service protocol. Project ownership changes control-plane authorization, not the fundamental proxy path.</p>
+<p><b>Scenario:</b> a URL-map update in Project A fails with a “cross-project references ... not allowed” style error even though the backend is healthy. Check IAM on the backend service and organization-policy restrictions before checking health-check firewall rules; this is a control-plane authorization failure, not a data-plane health failure.</p>
+<p class="take"><b>Memory anchor:</b> frontend and routing can be centralized; backend service, backends, and health check remain an application-owned unit.</p>
+</section>
+
+<section class="lesson" data-domain="3,6">
+<h2>3. Cross-project SSL policy referencing as centralized TLS governance</h2>
+<span class="tag">Domain 3 — Managed network services</span><span class="tag">Domain 6 — Network security</span>
+<div class="src"><b>Primary authoritative source:</b> <a href="https://docs.cloud.google.com/load-balancing/docs/use-ssl-policies">Use SSL policies</a></div>
+<h3>Control-plane model</h3>
+<p>Cross-project SSL policy referencing separates TLS policy ownership from load-balancer ownership. A central security or platform project can own approved SSL policies while target HTTPS or SSL proxies in service projects reference them. The target proxy must use the full resource URI of the central policy, which removes ambiguity about project scope.</p>
+<p>This mechanism centralizes policy but does not merge resource scope. Global target proxies reference global policies. Regional target HTTPS proxies reference regional SSL policies in the same region. IAM is deliberately split: administrators in the central project need permissions to manage the policy, and the actor attaching it needs <code>compute.sslPolicies.use</code>; in the service project the actor also needs the target-proxy create or update permissions.</p>
+<pre class="mermaid">flowchart LR
+SEC[Central security project] --> P[SSL policy]
+APP[Service project] --> T[Target HTTPS/SSL proxy]
+T -->|full resource URI + use permission| P
+CL[Client TLS handshake] --> T
+T --> B[Backend connection\nseparate protocol/security choice]
+</pre>
+<p><b>What to notice:</b> the SSL policy governs client-to-proxy TLS. It does not automatically configure or validate encryption on the proxy-to-backend leg.</p>
+<h3>Supported attachment logic and IAM</h3>
+<p>Google documents cross-project attachment for target HTTPS proxies and target SSL proxies with scope-appropriate policy resources. The central policy project can delegate only the use permission instead of broad edit rights. This supports a strong separation-of-duties model: service teams can deploy load balancers but cannot silently weaken the organization's approved TLS baseline.</p>
+<table><tr><th>Concern</th><th>Central policy project</th><th>Service project</th></tr><tr><td>Create/change SSL policy</td><td>Security/network/load-balancer admin role</td><td>Not required</td></tr><tr><td>Attach central policy</td><td><code>compute.sslPolicies.use</code></td><td>Target proxy create/update</td></tr><tr><td>Scope</td><td>Global or regional policy</td><td>Proxy scope must be compatible</td></tr></table>
+<h3>Validated CLI pattern and failure analysis</h3>
+<pre class="code">gcloud compute target-https-proxies update TARGET_PROXY_NAME \
+  --ssl-policy=projects/POLICY_PROJECT_ID/global/sslPolicies/CENTRAL_SSL_POLICY_NAME \
+  --project=SERVICE_PROJECT_ID</pre>
+<p>For a regional target HTTPS proxy, Google documents the regional policy URI and the <code>--region</code> flag. If attachment fails, verify policy scope, project IDs, <code>compute.sslPolicies.use</code>, and target-proxy permissions independently. A successful attachment followed by backend TLS errors points elsewhere: backend protocol, certificates, or backend mTLS configuration.</p>
+<p><b>Scenario:</b> a service owner can update a URL map but receives permission denied when attaching the approved central policy. Granting broad project Editor would work but violates least privilege; grant the explicit policy-use permission plus the required proxy update role instead.</p>
+<p class="take"><b>Exam anchor:</b> centralized TLS governance is a resource-reference and IAM problem; frontend SSL policy and backend encryption are separate security planes.</p>
+</section>
+
+<section class="lesson" data-domain="3,5">
+<h2>4. HTTP/3 over IETF QUIC at the external Application Load Balancer edge</h2>
+<span class="tag">Domain 3 — Managed network services</span><span class="tag">Domain 5 — Operations</span>
+<div class="src"><b>Primary authoritative source:</b> <a href="https://docs.cloud.google.com/load-balancing/docs/https">External Application Load Balancer overview — HTTP/3</a><br><b>Supporting source:</b> <a href="https://docs.cloud.google.com/load-balancing/docs/https/http-load-balancing-best-practices">External Application Load Balancer performance best practices</a></div>
+<h3>Where HTTP/3 exists in the proxy path</h3>
+<p>HTTP/3 uses HTTP semantics over QUIC, which uses UDP and integrates TLS 1.3. For Google external Application Load Balancers, HTTP/3 is a <em>client-to-load-balancer</em> protocol. It is not the protocol used from the load balancer to an application backend. Treat the two proxy legs independently: a client can use HTTP/3 while the backend service uses HTTP, HTTPS, HTTP/2, or another supported backend protocol.</p>
+<pre class="mermaid">sequenceDiagram
+participant C as Client
+participant G as Google load-balancing edge
+participant B as Backend
+C->>G: HTTPS discovery / HTTP/3 advertisement
+C->>G: QUIC over UDP + TLS 1.3
+G->>B: New proxy connection using configured backend protocol
+B-->>G: Response
+G-->>C: HTTP/3 response
+Note over C,G: If QUIC/UDP cannot establish, a compliant client falls back to HTTPS/HTTP/2
+</pre>
+<p><b>What to notice:</b> HTTP/3 does not make the application server an HTTP/3 server when a proxy load balancer is in between.</p>
+<h3>Why QUIC helps and why it can fail silently</h3>
+<p>QUIC can reduce transport head-of-line blocking and handles connection migration better than a TCP connection identified by a fixed 5-tuple. Google also documents BBR congestion control for HTTP/3 connections. These properties can improve latency and throughput, especially on mobile or lossy networks.</p>
+<p>The operational caveat is UDP reachability. Enterprise firewalls, client networks, or middleboxes can block or rate-limit UDP. Proper clients fall back to HTTPS/HTTP/2, so an application may appear healthy while the expected HTTP/3 performance benefit is absent. Troubleshooting therefore needs protocol-aware client tests and edge telemetry rather than only checking HTTP status codes.</p>
+<table><tr><th>Leg</th><th>Possible protocol</th><th>Who controls it?</th></tr><tr><td>Client → load balancer</td><td>HTTP/1.1, HTTP/2, HTTP/3 as supported</td><td>Client capability, LB mode/config, network path</td></tr><tr><td>Load balancer → backend</td><td>Configured backend service protocol</td><td>Backend service setting and backend capability</td></tr></table>
+<h3>Design and troubleshooting scenario</h3>
+<p>For supported global external deployments, the QUIC override controls whether the load balancer advertises HTTP/3. When users on one corporate network show higher latency while home users negotiate HTTP/3, test whether UDP to the load-balancer edge is blocked. Do not “fix” the backend to speak HTTP/3; that misunderstands the proxy boundary.</p>
+<p class="take"><b>Memory anchor:</b> HTTP/3 is an edge protocol optimization; backend protocol selection remains an independent design choice.</p>
+</section>
+
+<section class="lesson" data-domain="3,5">
+<h2>5. Application Load Balancer backend protocol selection and HTTP/2 connection economics</h2>
+<span class="tag">Domain 3 — Managed network services</span><span class="tag">Domain 5 — Operations</span>
+<div class="src"><b>Primary authoritative source:</b> <a href="https://docs.cloud.google.com/load-balancing/docs/https/http-load-balancing-best-practices">External Application Load Balancer performance best practices</a><br><b>Supporting source:</b> <a href="https://docs.cloud.google.com/load-balancing/docs/ssl-certificates/encryption-to-the-backends">Encryption from the load balancer to backends</a></div>
+<h3>Backend protocol is explicit, not negotiated as a fallback chain</h3>
+<p>The backend service protocol tells the proxy how to communicate with its backend. For Application Load Balancers, common choices include HTTP, HTTPS, HTTP/2 over TLS, and where supported H2C for cleartext HTTP/2. Google documents that the load balancer uses the protocol configured on the backend service and does not fall back to a different backend protocol when communication fails.</p>
+<p>This is independent from the client-facing protocol. A client can negotiate HTTP/2 with the HTTPS frontend while the load balancer uses HTTP/1.1 HTTPS to a backend, or the frontend can receive HTTP/3 while the backend connection uses HTTP/2. Proxy termination is the decoupling point.</p>
+<pre class="mermaid">flowchart LR
+C[Client protocol\nHTTP/1.1, HTTP/2, or HTTP/3] --> P[Application LB proxy]
+P -->|backend service = HTTP| H1[HTTP/1.1 backend]
+P -->|backend service = HTTPS| H2[HTTP/1.1 + TLS backend]
+P -->|backend service = HTTP2| H3[HTTP/2 + TLS backend]
+P -->|where supported: H2C| H4[HTTP/2 cleartext backend]
+</pre>
+<h3>Connection pooling and latency</h3>
+<p>A counterintuitive Google-documented behavior is that HTTP/2 from the load balancer to backend instances can require <em>more</em> TCP connections than HTTP or HTTPS. The connection-pooling optimization used for HTTP/1.1 HTTP(S) backends is not available in the same way for HTTP/2 backends, so frequent backend connection creation can raise backend latency. Protocol choice should therefore be driven by application requirements such as gRPC or end-to-end HTTP/2 semantics, not by the assumption that HTTP/2 always reduces every connection count.</p>
+<p>For HTTP/2 over TLS, backends must serve TLS and the backend service protocol must be <code>HTTP2</code>. For H2C, TLS is not used on that leg. Google also distinguishes network-level encryption inside supported Google Cloud backend cases from application-layer TLS; hybrid or internet NEG backends deserve explicit secure protocol choices.</p>
+<table><tr><th>Protocol</th><th>Backend TLS</th><th>Operational point</th></tr><tr><td>HTTP</td><td>No application TLS</td><td>Simple HTTP/1.1; evaluate trust boundary</td></tr><tr><td>HTTPS</td><td>Yes</td><td>HTTP/1.1 with TLS; connection pooling available</td></tr><tr><td>HTTP2</td><td>Yes</td><td>Required for some gRPC designs; may create more backend TCP connections</td></tr><tr><td>H2C</td><td>No</td><td>HTTP/2 over cleartext where the LB mode supports it</td></tr></table>
+<h3>Failure scenario</h3>
+<p>An application team changes the backend service to HTTP2 because clients use HTTP/2, but backend servers only listen for HTTP/1.1 TLS. The load balancer will not automatically downgrade to HTTPS. The correct repair is to align backend capability with the configured backend protocol, or choose HTTPS if end-to-end HTTP/2 is not required.</p>
+<p class="take"><b>Exam anchor:</b> client protocol and backend protocol are independent; troubleshoot each proxy leg separately.</p>
+</section>
+
+<section class="lesson" data-domain="2,4">
+<h2>6. Cloud Router explicit BGP identifier ranges for stable router IDs</h2>
+<span class="tag">Domain 2 — Implementing VPC networks</span><span class="tag">Domain 4 — Hybrid connectivity</span>
+<div class="src"><b>Primary authoritative source:</b> <a href="https://docs.cloud.google.com/network-connectivity/docs/router/how-to/configure-bgp-identifier">Configure the BGP identifier range for a Cloud Router</a></div>
+<h3>Router ID behavior and why stability matters</h3>
+<p>A BGP identifier (router ID) is a 4-octet unsigned value represented in IPv4 notation. Cloud Router can derive a router ID automatically from its IPv4 BGP interfaces, but that convenience has an operational side effect: without an explicit BGP identifier range, adding or removing BGP sessions or periodic maintenance can change the automatically selected identifier. A router-ID change can restart BGP adjacency and therefore cause avoidable control-plane churn.</p>
+<p>Assigning an explicit identifier range gives Cloud Router a stable identifier. It is required for IPv6 BGP. If an IPv6 interface is added to a router that lacks the explicit setting, Google can automatically populate a random range from link-local IPv4 space.</p>
+<pre class="mermaid">flowchart TB
+R[Cloud Router] --> I{Explicit identifier range?}
+I -->|Yes| S[Stable router ID selected from range]
+I -->|No, IPv4 only| A[Auto ID from lexicographically-last IPv4 interface]
+I -->|IPv6 added| G[Identifier range required / populated]
+A --> C[Interface/session changes can alter ID]
+C --> X[BGP restart risk]
+</pre>
+<h3>Range rules and change impact</h3>
+<p>Google requires the explicit identifier range to come from <code>169.254.0.0/16</code> with a prefix length of at most <code>/30</code>. It must not overlap IPv4 ranges used by BGP sessions on the router or custom BGP identifier ranges of another Cloud Router in the same VPC network and region. This is control-plane address planning; it does not become an advertised workload prefix.</p>
+<p>Changing an existing explicit BGP identifier range is disruptive: Google warns that all existing BGP sessions for all peers on the Cloud Router restart. Treat a retrofit like a routing maintenance event, verify redundant paths, and avoid simultaneous maintenance on parallel connectivity.</p>
+<table><tr><th>Case</th><th>Router-ID behavior</th><th>Design action</th></tr><tr><td>IPv4 BGP, no explicit range</td><td>Derived automatically and can change</td><td>Accept churn risk or configure a stable range</td></tr><tr><td>IPv6 BGP</td><td>Explicit identifier range required</td><td>Plan nonoverlapping 169.254/16 space</td></tr><tr><td>Modify existing range</td><td>All router BGP sessions restart</td><td>Use a maintenance/failover plan</td></tr></table>
+<h3>Validated CLI and troubleshooting</h3>
+<pre class="code">gcloud compute routers create ROUTER_NAME \
+  --bgp-identifier-range=BGP_IDENTIFIER_RANGE
+
+gcloud compute routers update ROUTER_NAME \
+  --bgp-identifier-range=BGP_IDENTIFIER_RANGE</pre>
+<p>If creation fails, verify that the range is link-local, appropriately sized, and nonoverlapping. If a network experiences BGP resets after routine interface changes and no explicit identifier is configured, compare router IDs before and after the event.</p>
+<p class="take"><b>Memory anchor:</b> BGP peer addresses establish the session; the BGP identifier identifies the router. Do not conflate the two.</p>
+</section>
+
+<section class="lesson" data-domain="4">
+<h2>7. Partner Interconnect ASN 16550 and Cloud Router sharing constraints</h2>
+<span class="tag">Domain 4 — Hybrid and multi-cloud interconnectivity</span>
+<div class="src"><b>Primary authoritative source:</b> <a href="https://docs.cloud.google.com/network-connectivity/docs/interconnect/how-to/partner/creating-vlan-attachments">Create Partner Interconnect VLAN attachments</a><br><b>Supporting source:</b> <a href="https://docs.cloud.google.com/network-connectivity/docs/router/how-to/configure-bgp-identifier">Cloud Router BGP identifier and ASN guidance</a></div>
+<h3>The Partner Interconnect ASN exception</h3>
+<p>Normal Cloud Router creation uses a private Google-side ASN from documented private ranges. Partner Interconnect is a notable exception: the Cloud Router associated with Partner Interconnect VLAN attachments must use Google's public ASN <code>16550</code>. This constraint is easy to miss when a design standard assumes every Cloud Router should use an enterprise-selected private ASN.</p>
+<p>A Cloud Router uses one local ASN across all BGP sessions it manages. Therefore, choosing 16550 for Partner Interconnect affects what else that router can manage. It naturally fits other Partner Interconnect sessions and can be shared with a Dedicated Interconnect attachment only if using 16550 is acceptable for that routing design. Do not plan to attach a different local ASN to another session on the same Cloud Router.</p>
+<pre class="mermaid">flowchart LR
+CR[Cloud Router\nlocal ASN 16550] --> P1[Partner VLAN attachment A]
+CR --> P2[Partner VLAN attachment B]
+CR --> D[Dedicated attachment\npossible only if same local ASN design works]
+CR -. cannot use a second local ASN .-> X[Session requiring a different Cloud Router ASN]
+</pre>
+<h3>Attachment creation and provider handoff</h3>
+<p>A Partner Interconnect VLAN attachment is created with type <code>PARTNER</code> and an existing Cloud Router in the network and region to be reached. Google automatically creates the router interface and BGP peer elements associated with the attachment, and the attachment produces a pairing key that is shared with the service provider. The provider completes its side of provisioning before the attachment reaches a usable state.</p>
+<p>The attachment MTU is another contract across the path. Google currently documents valid Partner attachment MTUs of 1440 (default), 1460, 1500, and 8896; using a larger value requires compatible VPC, on-premises VM, router, and provider-path configuration.</p>
+<table><tr><th>Design check</th><th>Partner Interconnect implication</th></tr><tr><td>Cloud Router local ASN</td><td>Must be 16550</td></tr><tr><td>BGP session creation</td><td>Google/provider workflow creates session components for the attachment</td></tr><tr><td>Pairing key</td><td>Share with the connectivity provider</td></tr><tr><td>Router reuse</td><td>All sessions share the same local ASN; separate routers when ASN requirements conflict</td></tr></table>
+<h3>Failure scenario and verification</h3>
+<p>A team tries to reuse a Cloud Router created with private ASN 64514 for a new Partner Interconnect attachment and treats the failure as a provider issue. The correct first check is the Cloud Router ASN. Conversely, if 16550 is correct but the attachment is awaiting provider activation, changing BGP timers is premature.</p>
+<p class="take"><b>Exam anchor:</b> Partner Interconnect changes the local-AS assumption: remember 16550 and the one-ASN-per-Cloud-Router consequence.</p>
+</section>
+
+<section class="lesson" data-domain="1,4">
+<h2>8. Dedicated Interconnect single-region 99.99% Critical production topology</h2>
+<span class="tag">Domain 1 — Design and planning</span><span class="tag">Domain 4 — Hybrid connectivity</span>
+<div class="src"><b>Primary authoritative source:</b> <a href="https://docs.cloud.google.com/network-connectivity/docs/interconnect/tutorials/dedicated-creating-9999-availability">Establish 99.99% availability for Dedicated Interconnect</a><br><b>Comparison source:</b> <a href="https://docs.cloud.google.com/network-connectivity/docs/interconnect/tutorials/dedicated-creating-999-availability">Establish 99.9% availability for Dedicated Interconnect</a></div>
+<h3>SLA is a topology property, not a connection count</h3>
+<p>Google recommends the 99.99% configuration for production and mission-critical workloads. The important design principle is failure-domain diversity: merely ordering several Interconnect circuits does not create the intended SLA if they share the wrong metro or edge availability domain. In the traditional multi-metro critical topology, at least four connections are distributed across two metros and both edge availability domains in each metro. Google also supports qualifying single-region 99.99% topologies in supported metros, introduced as a production-critical option.</p>
+<p>For comparison, the 99.9% design uses at least two Dedicated Interconnect connections distributed across a valid pair of facility/edge-availability-domain combinations in one metro and is positioned for noncritical workloads that can tolerate some downtime.</p>
+<pre class="mermaid">flowchart TB
+ON[On-premises routers] --> M1A[Metro A / EAD 1]
+ON --> M1B[Metro A / EAD 2]
+ON --> M2A[Metro B / EAD 1]
+ON --> M2B[Metro B / EAD 2]
+M1A --> VA[VLAN attachments]
+M1B --> VA
+M2A --> VA
+M2B --> VA
+VA --> CR[Cloud Router BGP tasks]
+CR --> VPC[VPC]
+</pre>
+<h3>VLAN attachments, Cloud Router tasks, and maintenance</h3>
+<p>For the documented multi-region 99.99% topology, each VPC uses at least four VLAN attachments, each dependent on a unique Interconnect connection. Google points out that simply creating more Cloud Router resources does not increase the SLA: Cloud Router distributes VLAN-attachment BGP sessions across redundant BGP software tasks based on edge availability domain. Reliability comes from the complete connectivity topology, not from counting router objects.</p>
+<p>Maintenance is coordinated between edge availability domains within a metro, but not necessarily among different metros. That is why metro diversity matters. On-premises routers should advertise the same destination prefixes across the redundant BGP sessions; MED or other routing policy can influence preferred paths without removing failover reachability.</p>
+<table><tr><th>Target</th><th>Topology idea</th><th>Use case</th></tr><tr><td>99.9%</td><td>At least 2 connections across paired facility/EAD combinations in one metro</td><td>Noncritical, downtime-tolerant</td></tr><tr><td>99.99%</td><td>Production-critical qualifying topology; multi-metro design uses at least 4 connections across both EADs in two metros</td><td>Mission-critical / low downtime tolerance</td></tr></table>
+<h3>Capacity and failure testing</h3>
+<p>An SLA-shaped topology can still fail operationally if surviving links cannot carry the failed link's traffic. Capacity planning therefore includes N-1/N-N failure bandwidth, BGP preference, VLAN attachment quotas, and on-prem router redundancy. Test withdrawal of preferred paths and verify that failover does not overload remaining circuits.</p>
+<p><b>Scenario:</b> four circuits are ordered, but all terminate in one metro. The circuit count looks impressive, yet the design does not meet the documented multi-metro 99.99% failure-domain pattern. Fix placement before tuning BGP.</p>
+<p class="take"><b>Memory anchor:</b> for Interconnect, availability is built from metro + edge-domain diversity + attachment design + failover capacity.</p>
+</section>
+
+<section class="lesson" data-domain="5,6">
+<h2>9. Connectivity Tests analysis of Google Threat Intelligence firewall rules</h2>
+<span class="tag">Domain 5 — Operations and troubleshooting</span><span class="tag">Domain 6 — Network security</span>
+<div class="src"><b>Primary authoritative source:</b> <a href="https://docs.cloud.google.com/network-intelligence-center/docs/release-notes">Network Intelligence Center release notes</a> — September 22, 2026<br><b>Supporting source:</b> <a href="https://docs.cloud.google.com/network-intelligence-center/docs/connectivity-tests/concepts/overview">Connectivity Tests overview</a></div>
+<h3>What changed on September 22, 2026</h3>
+<p>Google announced that Connectivity Tests now analyzes firewall policy rules that use Google Threat Intelligence data. That matters because configuration analysis can now incorporate a policy decision whose source match is maintained by Google's threat-intelligence data rather than only static address constructs. For network operations, this closes a visibility gap between “the route exists” and “the effective security policy allows the simulated flow.”</p>
+<p>Connectivity Tests is fundamentally a configuration-analysis system. It builds a model of the path and evaluates relevant Google Cloud network configuration. In selected scenarios it can also perform live data-plane probing, but a successful or failed configuration analysis should not be confused with synthetic application transaction testing.</p>
+<pre class="mermaid">flowchart LR
+S[Source endpoint] --> CT[Connectivity Tests model]
+CT --> R[Route / LB / NAT evaluation]
+R --> FP[Firewall policy evaluation]
+GTI[Google Threat Intelligence lists] --> FP
+FP -->|allow path| D[Destination modeled reachable]
+FP -->|deny match| X[Trace identifies policy decision]
+</pre>
+<h3>Operational workflow</h3>
+<p>When investigating a suspected firewall issue, define the source, destination, protocol, and port accurately. Read the trace in order rather than jumping directly to the final verdict. A GTI-backed firewall rule can be the decisive step even if route selection, peering, or load-balancer configuration is correct. Conversely, a GTI-enabled rule being present does not prove that a particular IP is currently in the relevant intelligence category; evaluate the trace output.</p>
+<table><tr><th>Tool/output</th><th>Question it answers</th></tr><tr><td>Connectivity Tests configuration analysis</td><td>Given current modeled configuration, should this flow be reachable and which control decides?</td></tr><tr><td>Live data-plane analysis where supported</td><td>Can active probes corroborate modeled connectivity?</td></tr><tr><td>Firewall/security logs</td><td>What happened to real traffic and which policy/rule matched?</td></tr></table>
+<h3>Scenario and troubleshooting boundary</h3>
+<p>A VM loses access to a destination after a security team introduces a GTI-based deny rule. Routing tables are unchanged. Run a Connectivity Test with the exact tuple and inspect the firewall-policy step; if the modeled policy now denies it, changing routes is counterproductive. Then use logging and security-team context to determine whether the destination belongs in an intelligence-driven block category or the application should use a different destination.</p>
+<p class="take"><b>Freshness anchor:</b> GTI firewall-rule analysis in Connectivity Tests is a September 22, 2026 capability, so older troubleshooting runbooks may omit it.</p>
+</section>
+
+<section class="lesson" data-domain="6">
+<h2>10. Cloud Armor managed rules: stable/canary signature operations</h2>
+<span class="tag">Domain 6 — Cloud network security</span>
+<div class="src"><b>Primary authoritative source:</b> <a href="https://docs.cloud.google.com/armor/docs/managed-rules-overview">Cloud Armor managed rules overview</a><br><b>Configuration source:</b> <a href="https://docs.cloud.google.com/armor/docs/set-up-managed-rules">Set up managed rules</a><br><b>Release source:</b> <a href="https://docs.cloud.google.com/armor/docs/release-notes">Cloud Armor release notes</a> — September 17, 2026 Preview</div>
+<h3>Managed rules versus static hand-maintained signatures</h3>
+<p>Cloud Armor managed rules are Google-maintained threat-detection groups that are integrated directly into Cloud Armor security policies. Google curates and validates signatures against threat intelligence, automatically rolls signature updates, and can expedite emergency coverage for time-sensitive or zero-day vulnerabilities. The feature entered Preview on September 17, 2026.</p>
+<p>The managed-rules model differs from merely enabling an OWASP CRS version and leaving it unchanged. The category is a living signature stream. Current documented categories include SQL injection, cross-site scripting, local/remote file inclusion, automated threats, authentication bypass, account takeover, SSRF, file upload, data leakage, backdoor/trojan, spam/abuse, and miscellaneous threats.</p>
+<pre class="mermaid">flowchart LR
+REQ[Incoming request] --> C[Cloud Armor security policy]
+C --> CAN[Managed rules canary\npreview / early signatures]
+CAN --> LOG[Logs for impact review]
+C --> ST[Managed rules stable\nenforced production baseline]
+ST -->|match| D[Deny/action]
+ST -->|no match| B[Backend service]
+</pre>
+<h3>Stable/canary deployment strategy</h3>
+<p>Google recommends <code>stable</code> for production-validated behavior and <code>canary</code> for earlier signature exposure. A strong rollout pattern places canary at a higher priority in preview mode and stable at a lower priority in enforced mode. Preview lets operators observe what canary <em>would</em> have blocked before it can impact users, while stable continues enforcement.</p>
+<p>Security-policy rule priority still matters. Cloud Armor executes the action of the highest-priority matching terminal rule. Treat managed rules as part of the overall policy graph, not as a separate appliance inserted after every custom rule.</p>
+<table><tr><th>Version strategy</th><th>Use</th><th>Operational treatment</th></tr><tr><td><code>stable</code></td><td>Production-validated signatures</td><td>Enforced baseline; automatically updated</td></tr><tr><td><code>canary</code></td><td>Early-access signatures</td><td>Prefer preview first; analyze logs before enforcement</td></tr></table>
+<h3>Validated configuration pattern</h3>
+<pre class="code">gcloud compute security-policies rules create 100 \
+  --security-policy POLICY_NAME \
+  --action deny-403 \
+  --expression "evaluateManagedRules('xss:canary')" \
+  --preview
+
+gcloud compute security-policies rules create 200 \
+  --security-policy POLICY_NAME \
+  --action deny-403 \
+  --expression "evaluateManagedRules('xss:stable')"</pre>
+<p>The policy does not protect a workload until attached to a supported backend service. Logs expose managed-rules metadata such as ruleset ID/version and preview matches, which should be part of the promotion decision.</p>
+<p class="take"><b>Exam/interview anchor:</b> canary preview is the safety valve for automatically evolving signatures; stable is the enforced baseline.</p>
+</section>
+
+<section class="lesson" data-domain="6">
+<h2>11. Cloud Armor CEL matching on raw request bodies and structured parameters</h2>
+<span class="tag">Domain 6 — Cloud network security</span>
+<div class="src"><b>Primary authoritative source:</b> <a href="https://docs.cloud.google.com/armor/docs/rules-language-reference">Configure custom rules language attributes</a><br><b>Supporting source:</b> <a href="https://docs.cloud.google.com/armor/docs/content-parsing">Request body content parsing</a><br><b>Release source:</b> <a href="https://docs.cloud.google.com/armor/docs/release-notes">Cloud Armor release notes</a> — August 27, 2026 Preview</div>
+<h3>New application-aware custom-rule inputs</h3>
+<p>On August 27, 2026 Google announced Preview support for advanced match conditions that inspect request body content and parameters. The custom CEL language exposes <code>request.body</code> as the raw request body string and <code>request.params</code> as a map of parsed parameters. Parameter sources can include URL query parameters and supported structured request bodies such as JSON, form data, and GraphQL.</p>
+<p>This is different from preconfigured WAF parsing. The goal here is to build an explicit custom policy condition around an application-specific field or body pattern. The language still follows normal Cloud Armor rule priority semantics: once the highest-priority matching rule with a terminal action is selected, lower-priority rules are not evaluated.</p>
+<pre class="mermaid">flowchart TB
+R[HTTP request] --> A[Cloud Armor]
+A --> RAW[request.body\nraw string]
+A --> PAR[request.params\nparsed map]
+RAW --> CEL[CEL advanced condition]
+PAR --> CEL
+CEL -->|match| ACT[allow / deny / other supported action]
+CEL -->|no match| NEXT[Continue policy evaluation]
+</pre>
+<h3>Examples and parsing boundaries</h3>
+<p>Google's documented examples include matching a POST body that contains a value and testing a parameter by name. For example, <code>request.method == 'POST' &amp;&amp; request.body.contains('malicious-value')</code> examines the raw body, while <code>request.params.category == 'electronics'</code> evaluates a parsed parameter. Use raw-body inspection when literal content is important; use parameters when application structure is the policy contract.</p>
+<p>Body inspection is bounded. Cloud Armor documents request-body inspection sizes up to the first 64 kB, configurable among supported sizes. JSON parsing should be enabled appropriately for workloads that rely on REST, JSON, or GraphQL. Oversized or malformed content can change what is visible to a rule, so security design should not assume arbitrary request bodies are fully inspected.</p>
+<table><tr><th>Attribute</th><th>Representation</th><th>Good use</th></tr><tr><td><code>request.body</code></td><td>Raw string</td><td>Literal markers, prefixes, regex over body text</td></tr><tr><td><code>request.params</code></td><td>Key/value map</td><td>Query, JSON/form/GraphQL parameter policy</td></tr><tr><td>Preconfigured WAF parsing</td><td>Signature-oriented parsed content</td><td>Generic attack detection and false-positive tuning</td></tr></table>
+<h3>Security and troubleshooting scenario</h3>
+<p>A rule is meant to block a dangerous JSON field but never matches. First verify Content-Type and parsing behavior, then inspection-size limits, then the CEL expression and rule priority. If a higher-priority terminal rule already matches, the body rule will not run. Preview mode and request logging are safer ways to validate custom conditions before enforcing them.</p>
+<p class="take"><b>Memory anchor:</b> <code>request.body</code> is raw content; <code>request.params</code> is structured data. Select the representation that matches the application contract.</p>
+</section>
+
+<section class="lesson" data-domain="2,3,5">
+<h2>12. GKE Gateway Policy model: HealthCheckPolicy and GCPBackendPolicy</h2>
+<span class="tag">Domain 2 — Implementing VPC networks</span><span class="tag">Domain 3 — Managed services</span><span class="tag">Domain 5 — Operations</span>
+<div class="src"><b>Primary authoritative source:</b> <a href="https://docs.cloud.google.com/kubernetes-engine/docs/how-to/configure-gateway-resources">Configure Gateway resources</a><br><b>Supporting source:</b> <a href="https://docs.cloud.google.com/kubernetes-engine/docs/concepts/gateway-api">GKE Gateway controller concepts</a></div>
+<h3>Policy attachment replaces Ingress-specific configuration habits</h3>
+<p>GKE Gateway uses Gateway API resources plus Google policy custom resources instead of treating older Ingress annotations or <code>BackendConfig</code>/<code>FrontendConfig</code> as interchangeable configuration. The selected <code>GatewayClass</code> determines which Google Cloud load-balancer implementation is created. Routes attach to Gateways, while policies attach to specific Kubernetes resources to shape generated Google Cloud infrastructure.</p>
+<p><code>HealthCheckPolicy</code> configures health checks for a backend target. <code>GCPBackendPolicy</code> configures backend-service behavior. For single-cluster Gateways, the target is typically a Service; for multi-cluster patterns, policy can target a ServiceImport as documented. Policy and target must satisfy scope/namespace requirements.</p>
+<pre class="mermaid">flowchart LR
+GW[Gateway + GatewayClass] --> RT[HTTPRoute]
+RT --> SVC[Service / ServiceImport]
+H[HealthCheckPolicy] -. attaches .-> SVC
+B[GCPBackendPolicy] -. attaches .-> SVC
+SVC --> NEG[GKE-managed NEGs]
+NEG --> BS[Google Cloud backend service]
+BS --> LB[Managed Application Load Balancer]
+</pre>
+<h3>Health checks are not Pod readiness probes</h3>
+<p>A key troubleshooting distinction is that the Google Cloud load balancer health check is not automatically equivalent to a Kubernetes Pod readiness probe. If the application does not return a healthy response on the default health-check behavior, define a <code>HealthCheckPolicy</code> that matches the actual application endpoint and protocol. A Pod can be Kubernetes-ready yet remain unhealthy to the load balancer, or the reverse, if these contracts are misaligned.</p>
+<p>Policy conflicts are deterministic rather than merged arbitrarily. Google documents that only one <code>GCPBackendPolicy</code> can attach to a target; when conflicting policies attempt to target the same resource, the controller reports policy status and uses its documented precedence behavior. Always inspect resource status conditions instead of inferring that the newest YAML won.</p>
+<table><tr><th>Resource</th><th>Controls</th><th>Troubleshoot with</th></tr><tr><td>Gateway / GatewayClass</td><td>Frontend/load-balancer class and listeners</td><td>Gateway status, addresses, listener conditions</td></tr><tr><td>HTTPRoute</td><td>Request matching and backend references</td><td>Route parent/reference conditions</td></tr><tr><td>HealthCheckPolicy</td><td>Google Cloud backend health-check behavior</td><td>Policy status + backend health</td></tr><tr><td>GCPBackendPolicy</td><td>Backend-service behavior</td><td>Policy status + generated backend service</td></tr></table>
+<h3>Prerequisites and scenario</h3>
+<p>Gateway deployment prerequisites depend on GatewayClass but include a compatible GKE version/configuration, VPC-native networking, and for regional/cross-region proxy-based load balancers an appropriate proxy-only subnet. The cluster's HTTP load-balancing capability must not be disabled when the controller depends on it.</p>
+<p><b>Scenario:</b> a service returns 200 on <code>/ready</code> but 404 on <code>/</code>. Pods are Ready, yet the Gateway backend stays unhealthy. Rather than changing firewall rules first, inspect the Google Cloud health check and attach a HealthCheckPolicy that probes the application's real health endpoint.</p>
+<p class="take"><b>Exam/interview anchor:</b> Kubernetes readiness and load-balancer health are related operationally but are distinct control planes.</p>
+</section>
+
+<section class="quiz">
+<h2>Interactive 50-question exam drill</h2>
+<p>Questions follow the verified six-domain weighting: <b>Domain 1: 11 · Domain 2: 10 · Domain 3: 8 · Domain 4: 8 · Domain 5: 7 · Domain 6: 6</b>. Multiple-select items are explicitly labeled. Submit once you have answered all questions; unanswered questions score as incorrect and feedback remains visible for review.</p>
+<div id="quiz"></div>
+<button id="grade">Finish &amp; grade</button>
+<div id="score" class="score"></div>
+</section>
+<script>
+const Q=[
+{"d":1,"q":"A regulated enterprise wants no new VM to receive a public IPv4 address except two named bastions. Which design best enforces this before packet filtering?","o":["Create a high-priority VPC firewall deny rule for 0.0.0.0/0","Apply constraints/compute.vmExternalIpAccess with an allowlist for the two VM resource paths","Remove the default internet gateway route from every subnet","Attach Cloud Armor to the two bastions"],"a":[1],"e":"The organization-policy constraint governs whether VM external IP configuration is allowed. Firewall and routes act on traffic after network resources exist."},
+{"d":1,"q":"A central platform team wants one public Application Load Balancer while application teams retain ownership of backend services in separate projects. What architecture best fits?","o":["Cross-project service referencing from a central URL map to service-project backend services","VPC Network Peering between every application project and the frontend project","A separate classic Application Load Balancer in every application project","Move every backend VM into the frontend project"],"a":[0],"e":"Cross-project service referencing centralizes frontend and URL-map ownership while backend services/backends remain service-owned."},
+{"d":1,"q":"Why is an allowlist of named VM instances a poor fit for an autoscaled public-node design?","o":["Organization Policy only evaluates IPv6 addresses","New managed instances can have names/resources not present in the static allowlist","Cloud NAT deletes allowlists during scale-out","MIGs ignore organization policies"],"a":[1],"e":"Autoscaling creates new VM resources; a static per-instance allowlist can prevent those new VMs from obtaining required external IPs."},
+{"d":1,"q":"A design has four Dedicated Interconnect circuits but all are in one metro. What is the most important concern when claiming a traditional multi-metro 99.99% topology?","o":["Four circuits always satisfy the topology regardless of placement","The design lacks the required metro failure-domain diversity","Cloud Router supports only two BGP peers","All circuits must use different VPC networks"],"a":[1],"e":"The 99.99% production-critical design depends on placement across failure domains, not raw circuit count."},
+{"d":1,"q":"Which statement best captures the role split in cross-project service referencing?","o":["The central team must own every health check and VM","The service team can own backend service, health check, and backends while the central team owns frontend and URL map","The service team owns the forwarding rule but not its backend","Project ownership is irrelevant because all load balancer resources are global"],"a":[1],"e":"Backend service plus its backends and associated health checks remain together; frontend and routing can be centralized."},
+{"d":1,"q":"MULTIPLE SELECT — Before enforcing a deny-all VM external-IP policy, which two checks are most important?","o":["Inventory existing public VM interfaces because the constraint is not retroactive","Identify managed workloads such as public GKE clusters or MIGs that create VMs with external addresses","Disable all health checks because they require external IPs","Convert all subnets to auto mode"],"a":[0,1],"e":"The control is non-retroactive and can break managed workflows that need to create public-addressed VMs."},
+{"d":1,"q":"Why does a 99.99% Interconnect topology still require failover capacity planning?","o":["The SLA automatically doubles bandwidth after a circuit failure","Surviving circuits can become congested even when control-plane failover works","Cloud Router stops advertising routes when utilization exceeds 50%","VLAN attachments reserve bandwidth per prefix"],"a":[1],"e":"Availability of paths does not guarantee sufficient surviving throughput. Capacity under failure must be engineered."},
+{"d":1,"q":"A security organization centralizes SSL policies in one project. What architectural benefit does cross-project SSL policy referencing provide?","o":["It forces backend traffic to use QUIC","It separates TLS-policy governance from service-project load-balancer ownership","It turns regional proxies into global proxies","It removes the need for IAM"],"a":[1],"e":"The model supports separation of duties: central policy ownership with delegated policy-use permission."},
+{"d":1,"q":"Which statement about a private VM with no external IPv4 is most accurate?","o":["It can never access the internet","It can use a governed egress path such as Cloud NAT without owning a public address","It must use Direct Peering for all egress","It automatically receives an external IPv6 address"],"a":[1],"e":"Private instances can reach the internet through controlled egress services such as Cloud NAT depending on routing/firewall design."},
+{"d":1,"q":"When designing central load balancing across many application projects, why are unique backend-service names useful even when project IDs differ?","o":["Google forbids duplicate names across organizations","They reduce operational ambiguity when reviewing cross-project references","They are required by DNSSEC","They control BGP best-path selection"],"a":[1],"e":"Google recommends unique backend-service names across projects to reduce ambiguity in cross-project designs."},
+{"d":1,"q":"Which principle best describes high-availability Interconnect design?","o":["Count devices only","Engineer independent failure domains, route failover, and surviving capacity together","Use one Cloud Router per circuit because router count defines the SLA","Prefer a single metro to simplify maintenance"],"a":[1],"e":"Reliable hybrid architecture combines physical diversity, control-plane convergence, and capacity under failure."},
+
+{"d":2,"q":"An IPv6 BGP session is being added to Cloud Router. What router-ID planning requirement becomes explicit?","o":["Use the VPC subnet's IPv6 /64 as the router ID","Configure a BGP identifier range from 169.254.0.0/16","Use ASN 16550 on every Cloud Router","Create a static default route first"],"a":[1],"e":"Cloud Router requires an explicit BGP identifier range for IPv6 BGP; it is selected from link-local IPv4 space."},
+{"d":2,"q":"What can happen if an IPv4-only Cloud Router relies on an automatically derived router ID and BGP interfaces change?","o":["The VPC MTU automatically changes","The router ID can change and BGP sessions can restart","The Cloud Router becomes a VM","The local ASN changes to 16550"],"a":[1],"e":"Auto-derived IDs can change with interface/session changes or maintenance, creating control-plane churn."},
+{"d":2,"q":"A team changes an existing Cloud Router explicit BGP identifier range during business hours. What should they expect?","o":["No effect until the next reboot","All existing BGP sessions on that Cloud Router restart","Only IPv6 peers restart","Only custom route advertisements restart"],"a":[1],"e":"Google warns that changing the explicit identifier range restarts all BGP sessions for peers on that Cloud Router."},
+{"d":2,"q":"Which explicit BGP identifier range is conceptually valid?","o":["10.0.0.0/8","192.168.1.0/24","169.254.20.0/30 if it does not overlap prohibited ranges","2001:db8::/64"],"a":[2],"e":"The range must come from 169.254.0.0/16, be no more specific than the documented /30 limit, and avoid overlaps."},
+{"d":2,"q":"A Gateway backend points to Pods that are Kubernetes Ready, but the Google load balancer marks all backends unhealthy. What should be checked first?","o":["Whether a HealthCheckPolicy matches the application's actual health endpoint","Whether kube-proxy uses IPVS","Whether the VPC is auto mode","Whether Cloud Router has BFD enabled"],"a":[0],"e":"GKE readiness probes and load-balancer health checks are distinct. HealthCheckPolicy configures the latter."},
+{"d":2,"q":"Which GKE Gateway resource primarily selects the Google Cloud load-balancer implementation?","o":["PodDisruptionBudget","GatewayClass","NetworkPolicy","ConfigMap"],"a":[1],"e":"GatewayClass is the infrastructure class that determines the controller/load-balancer behavior."},
+{"d":2,"q":"MULTIPLE SELECT — Which statements are true about GKE Gateway policies?","o":["HealthCheckPolicy can configure backend health checking","GCPBackendPolicy configures backend-service behavior","BackendConfig is automatically merged into every Gateway","Policy status should be inspected for attachment/conflict outcomes"],"a":[0,1,3],"e":"Gateway uses dedicated policy resources; Ingress-specific BackendConfig is not automatically interchangeable, and status conditions are key to troubleshooting."},
+{"d":2,"q":"Why must BGP identifier ranges be planned separately from workload CIDRs?","o":["They are control-plane link-local identifiers and must avoid specified overlaps","They are automatically advertised as VPC subnets","They are public internet address allocations","They replace the Cloud Router ASN"],"a":[0],"e":"The identifier range supports router IDs; it is not a workload prefix or ASN."},
+{"d":2,"q":"A Gateway-managed regional proxy load balancer fails to provision despite valid Route resources. Which network prerequisite is worth checking?","o":["A compatible proxy-only subnet for the applicable regional/cross-region proxy design","A Dedicated Interconnect circuit","An external IP on every Pod","A Partner Interconnect pairing key"],"a":[0],"e":"Proxy-based regional GatewayClasses can depend on a proxy-only subnet and compatible GKE/VPC prerequisites."},
+{"d":2,"q":"What is the strongest troubleshooting distinction when a GKE Service works inside the cluster but Gateway backends are unhealthy?","o":["Cluster DNS and BGP use the same health signal","Kubernetes readiness and Google Cloud backend health are separate checks","Gateway health is derived only from node status","Cloud Armor determines Kubernetes readiness"],"a":[1],"e":"A backend can be Kubernetes-ready yet fail the load balancer's health check because the paths/protocols are distinct."},
+
+{"d":3,"q":"A client uses HTTP/3 to a global external Application Load Balancer. What protocol must the backend also use?","o":["HTTP/3, always","QUIC without TLS","Whatever supported backend service protocol is configured; it need not be HTTP/3","UDP only"],"a":[2],"e":"HTTP/3 is client-to-load-balancer; the proxy opens an independent backend connection using the configured backend protocol."},
+{"d":3,"q":"An HTTP/2 backend server is configured without TLS while the backend service protocol is HTTP2. What is the likely issue?","o":["HTTP2 backend protocol requires TLS; use TLS or H2C where supported","HTTP/2 can never be used behind an Application Load Balancer","The client must downgrade to HTTP/1.0","Enable BGP multipath"],"a":[0],"e":"Google's HTTP2 backend protocol is HTTP/2 over TLS. H2C is the cleartext HTTP/2 option where supported."},
+{"d":3,"q":"Why can HTTP/2 to backend instances unexpectedly increase backend connection pressure?","o":["HTTP/2 disables all keepalives","The HTTP(S) connection-pooling optimization is not available in the same way for HTTP/2 backend connections","QUIC always opens ten TCP connections","TLS certificates are fetched per request"],"a":[1],"e":"Google documents that HTTP/2 to backends can require more TCP connections and can increase backend latency."},
+{"d":3,"q":"What IAM capability is central to referencing a backend service in another project?","o":["roles/dns.admin","roles/compute.loadBalancerServiceUser or equivalent use permission","roles/storage.objectViewer","roles/iam.serviceAccountTokenCreator only"],"a":[1],"e":"Cross-project service referencing requires authorization to use the backend service, commonly through Compute Load Balancer Services User."},
+{"d":3,"q":"Which resource URI style is needed when a service-project target HTTPS proxy attaches a central SSL policy?","o":["Only the short SSL policy name","The full resource URI identifying the policy project and scope","A DNS CNAME to the policy","The backend service selfLink"],"a":[1],"e":"Cross-project policy attachment must unambiguously identify the policy by full resource path."},
+{"d":3,"q":"A corporate firewall blocks UDP, but TCP/443 is allowed. What should a well-implemented HTTP/3-capable client usually do?","o":["Fail permanently because HTTP/3 is mandatory","Fall back to HTTPS/HTTP/2 when QUIC cannot establish","Convert UDP into ICMP","Ask the backend to enable H2C"],"a":[1],"e":"HTTP/3-capable clients are expected to fall back when QUIC cannot be established."},
+{"d":3,"q":"MULTIPLE SELECT — Which are independent decisions in a proxy Application Load Balancer?","o":["Client-facing HTTP protocol","Backend service protocol","Whether the backend's health check is successful","Cloud Router's BGP identifier is derived from the HTTP Host header"],"a":[0,1,2],"e":"Frontend protocol, backend protocol, and backend health are distinct control/data-plane choices; BGP router ID is unrelated."},
+{"d":3,"q":"What does GCPBackendPolicy conceptually configure in GKE Gateway deployments?","o":["Kubernetes scheduler placement","Generated Google Cloud backend-service behavior","Cloud DNS registrar delegation","Cloud Router learned routes"],"a":[1],"e":"GCPBackendPolicy attaches backend-service-specific behavior to a Gateway target resource."},
+
+{"d":4,"q":"Which local ASN must a Cloud Router use for Partner Interconnect?","o":["64512","65000","16550","15169"],"a":[2],"e":"Partner Interconnect requires the Google-owned public ASN 16550 on the associated Cloud Router."},
+{"d":4,"q":"Why can reusing one Cloud Router for Partner Interconnect and an unrelated BGP service be problematic?","o":["A Cloud Router can use only one local ASN, and Partner Interconnect fixes it at 16550","Partner Interconnect disables IPv4","Cloud Router allows only one BGP peer","Partner Interconnect requires static routing"],"a":[0],"e":"All sessions on a Cloud Router share its local ASN; a service requiring a different ASN needs another router design."},
+{"d":4,"q":"What does the Partner Interconnect pairing key accomplish?","o":["It encrypts BGP with IPsec","It is provided to the service provider to associate/provision the VLAN attachment","It replaces the Cloud Router ASN","It signs Cloud DNS zones"],"a":[1],"e":"The pairing key coordinates the customer attachment with the connectivity provider's provisioning workflow."},
+{"d":4,"q":"For the documented traditional multi-metro 99.99% Dedicated Interconnect pattern, what placement is central?","o":["At least four connections across two metros and both edge availability domains in each metro","One circuit in one metro with two VLANs","Two VPN tunnels over one Interconnect circuit","Four circuits in the same edge availability domain"],"a":[0],"e":"The critical topology deliberately spans metros and edge availability domains to reduce correlated failure."},
+{"d":4,"q":"Why doesn't creating additional Cloud Router resources alone improve the Interconnect SLA?","o":["Cloud Router is unsupported with Interconnect","Cloud Router already distributes relevant BGP sessions across software tasks; physical/attachment failure-domain topology drives the SLA","Every Cloud Router is single-zone","BGP is not used by VLAN attachments"],"a":[1],"e":"SLA eligibility is based on the connectivity topology; extra router objects do not substitute for correct physical and attachment diversity."},
+{"d":4,"q":"MULTIPLE SELECT — Which conditions should be validated before increasing Partner Interconnect MTU above the default?","o":["The VPC network MTU is compatible","On-premises routers/VMs and provider path support the intended MTU","Cloud Armor stable rules are enabled","The attachment uses a documented supported MTU"],"a":[0,1,3],"e":"MTU is an end-to-end path contract across VPC, attachment/provider, and on-premises systems."},
+{"d":4,"q":"On redundant Interconnect BGP sessions, why advertise the same on-premises prefixes on all required paths?","o":["So alternate paths retain reachability during failure, while policy such as MED can influence preference","Because Cloud Router rejects unique prefixes","Because each VLAN attachment is a DNS server","To force ECMP on every application"],"a":[0],"e":"Redundant advertisements preserve failover reachability; metrics can still tune preferred paths."},
+{"d":4,"q":"What is the best maintenance practice when changing a Cloud Router BGP identifier range in a redundant hybrid design?","o":["Change every parallel router simultaneously","Treat it as disruptive because sessions restart, and preserve an alternate path","Delete all VLAN attachments first","Disable route advertisements permanently"],"a":[1],"e":"Changing the range restarts BGP sessions; redundancy should carry traffic while one control plane is changed."},
+
+{"d":5,"q":"A September 2026 runbook says Connectivity Tests cannot reason about GTI-backed firewall rules. What is the correct update?","o":["That remains true","As of September 22, 2026, Connectivity Tests analyzes firewall policy rules that use Google Threat Intelligence data","GTI is analyzed only by Cloud DNS","Connectivity Tests was deprecated"],"a":[1],"e":"Network Intelligence Center release notes added GTI firewall-policy analysis on September 22, 2026."},
+{"d":5,"q":"A Connectivity Test reports a GTI-backed firewall denial while routes are valid. What should be investigated next?","o":["Increase subnet MTU first","Inspect the firewall-policy trace and relevant security/log context before changing routing","Delete the VPC","Change Cloud Router ASN"],"a":[1],"e":"When the modeled route succeeds but policy denies, routing changes do not address the observed control."},
+{"d":5,"q":"HTTP/3 performance benefits appear for home users but not corporate users; application responses still succeed. What is a likely explanation?","o":["Corporate path blocks/rate-limits QUIC UDP and clients fall back to HTTP/2","Backends require ASN 16550","Cloud Armor converts HTTP/3 to BGP","The corporate subnet is too large"],"a":[0],"e":"Fallback can mask QUIC reachability issues while preserving application success."},
+{"d":5,"q":"After switching a backend service from HTTPS to HTTP2, backend TCP connection count and latency rise. Which documented behavior is relevant?","o":["HTTP/2 backends always disable TLS","HTTP/2 backend connections don't use the HTTP(S) connection-pooling optimization in the same way","Cloud Router adds one TCP connection per route","HTTP/3 requires backend UDP"],"a":[1],"e":"Google warns that HTTP/2 backend use can create significantly more TCP connections than HTTP(S)."},
+{"d":5,"q":"A GKE Gateway backend is unhealthy while Pods are Ready. Which evidence is most useful?","o":["Gateway/policy status and Google Cloud backend health-check results","Only kubectl get pods","Only Cloud Router learned routes","Only DNSSEC signatures"],"a":[0],"e":"You need both Kubernetes controller status and the load balancer backend-health view to isolate the control plane."},
+{"d":5,"q":"MULTIPLE SELECT — Which sources complement rather than replace each other during a connectivity incident?","o":["Connectivity Tests configuration analysis","Firewall/security request logs","Live data-plane analysis where supported","A random client screenshot with no tuple information"],"a":[0,1,2],"e":"Modeled configuration, real traffic logs, and live probing answer different parts of the incident."},
+{"d":5,"q":"What is the best signal that a cross-project load-balancer failure is IAM/control-plane rather than backend health?","o":["A URL-map update fails with a cross-project reference permission error","A backend returns HTTP 503 after a successful config update","A health check times out","A client negotiates HTTP/2"],"a":[0],"e":"A rejected resource reference during configuration points to permission/policy controls before data-plane health."},
+
+{"d":6,"q":"Cloud Armor managed rules entered which launch stage on September 17, 2026?","o":["Deprecated","Preview","General Availability since 2020","Private hardware beta"],"a":[1],"e":"Google's September 17, 2026 release note marks managed rules as Preview."},
+{"d":6,"q":"What is the recommended operational relationship between managed-rules canary and stable versions?","o":["Enforce canary first and delete stable","Run canary in preview to observe early signatures while stable remains the enforced production baseline","Use only canary because stable never updates","Use stable only in preview"],"a":[1],"e":"Canary preview gives early visibility; stable is the production-validated baseline."},
+{"d":6,"q":"Which Cloud Armor attribute exposes the raw request body string for a custom CEL condition?","o":["request.body","request.route","origin.body","securityPolicy.payload"],"a":[0],"e":"request.body is the raw body string; request.params represents parsed parameter key/value data."},
+{"d":6,"q":"A custom Cloud Armor rule needs the value of a JSON or query parameter named category. Which attribute is designed for that structured lookup?","o":["request.params","request.bodyLengthOnly","origin.region_code","token.recaptcha_action"],"a":[0],"e":"request.params exposes parsed parameters as a map when supported parsing applies."},
+{"d":6,"q":"MULTIPLE SELECT — Why should request-body security rules be tested in preview/logging before enforcement?","o":["Parsing and inspection-size boundaries can affect matches","Rule priority can prevent a lower-priority condition from being evaluated","Application payloads can create false positives","Preview automatically expands the body beyond all limits"],"a":[0,1,2],"e":"Body format/size, policy priority, and application-specific payloads all affect safe enforcement; preview does not remove inspection limits."},
+{"d":6,"q":"A central SSL policy is attached successfully, but backend TLS validation fails. Why isn't the SSL policy the complete answer?","o":["Frontend SSL policy governs client-to-proxy TLS; backend encryption is configured separately","SSL policies configure BGP only","Cross-project SSL policies disable backend TLS","Backend traffic always uses cleartext"],"a":[0],"e":"The proxy terminates the client TLS leg; backend protocol/certificate/mTLS settings form a separate security plane."}
+];
+const quiz=document.getElementById('quiz');
+Q.forEach((x,i)=>{const multi=x.a.length>1;const el=document.createElement('div');el.className='q';el.dataset.i=i;let h=`<p><b>${i+1}. [Domain ${x.d}] ${multi?'MULTIPLE SELECT — ':''}${x.q}</b></p>`;x.o.forEach((o,j)=>{const t=multi?'checkbox':'radio';h+=`<label><input type="${t}" name="q${i}" value="${j}"> ${o}</label><br>`});h+='<div class="feedback" hidden></div>';el.innerHTML=h;quiz.appendChild(el)});
+document.getElementById('grade').addEventListener('click',()=>{let score=0;Q.forEach((x,i)=>{const el=document.querySelector(`.q[data-i="${i}"]`);const chosen=[...el.querySelectorAll('input:checked')].map(n=>+n.value).sort((a,b)=>a-b);const ans=[...x.a].sort((a,b)=>a-b);const ok=chosen.length===ans.length&&chosen.every((v,k)=>v===ans[k]);if(ok)score++;const f=el.querySelector('.feedback');f.hidden=false;f.className='feedback '+(ok?'right':'wrong');f.innerHTML=`<b>${ok?'Correct':'Incorrect'}.</b> Correct answer${ans.length>1?'s':''}: ${ans.map(v=>x.o[v]).join('; ')}<br>${x.e}`});const pct=Math.round(score*100/Q.length);document.getElementById('score').textContent=`Score: ${score}/${Q.length} (${pct}%)`;window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'})});
+</script>
+<footer class="card"><p><b>Validation target:</b> 12 comprehensive lessons, 12 Mermaid teaching diagrams, authoritative source-role labeling, exactly 50 client-side gradable questions, six-domain distribution 11/10/8/8/7/6, selectable answers, per-question review, final score and percentage, and no backend dependency. External dependency is limited to the stable Mermaid browser module.</p><p class="small">This report is original study material derived from the cited authoritative documentation; it does not reproduce certification exam questions or dumps.</p></footer>
+</body></html>
