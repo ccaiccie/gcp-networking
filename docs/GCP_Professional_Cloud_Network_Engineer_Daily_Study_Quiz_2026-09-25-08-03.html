@@ -1,0 +1,445 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Google Cloud PCNE Daily Interactive Study Report — 2026-09-25</title>
+<style>
+:root{color-scheme:light}body{font:15.5px/1.62 system-ui,-apple-system,Segoe UI,sans-serif;max-width:1180px;margin:auto;padding:28px;color:#202124;background:#f7faff}
+h1,h2,h3,h4{color:#123b66;line-height:1.25}.card,.lesson,.quiz{background:#fff;border:1px solid #d9e2ef;border-radius:14px;padding:22px;margin:18px 0;box-shadow:0 2px 8px #0001}
+.tag{display:inline-block;background:#e8f0fe;border-radius:999px;padding:4px 9px;margin:0 5px 8px 0}.src{background:#f6f9fc;border-left:4px solid #4285f4;padding:10px}.notice{background:#fff8e1;border-left:4px solid #f9ab00;padding:10px}.take{background:#eef8f0;border-left:4px solid #34a853;padding:10px}.warn{background:#fce8e6;border-left:4px solid #d93025;padding:10px}.ok{color:#137333;font-weight:700}
+table{width:100%;border-collapse:collapse;margin:10px 0}th,td{border:1px solid #d8dee8;padding:8px;vertical-align:top}th{background:#eef4fb}
+pre.mermaid{background:#f5f8fc;border:1px solid #dce6f2;border-radius:10px;padding:12px;overflow:auto}pre.code{background:#f6f8fa;border:1px solid #ddd;border-radius:8px;padding:12px;overflow:auto;white-space:pre-wrap}
+code{background:#f1f3f4;padding:2px 4px;border-radius:4px}.q{border-top:1px solid #ddd;padding:15px 0}.feedback{margin-top:8px;padding:9px;border-radius:8px;background:#f6f8fa}.right{background:#e6f4ea}.wrong{background:#fce8e6}
+button{padding:10px 16px;border:0;border-radius:8px;background:#1a73e8;color:#fff;font-weight:700;cursor:pointer}a{color:#145db2}.small{font-size:.92em;color:#5f6368}.score{font-size:1.2em;font-weight:700;margin-top:15px}
+</style>
+<script type="module">import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';mermaid.initialize({startOnLoad:true,theme:'neutral',securityLevel:'strict'});</script>
+</head><body>
+<h1>Google Cloud Professional Cloud Network Engineer — Daily Interactive Study Report</h1>
+<div class="card">
+<p><b>Generated:</b> September 25, 2026 08:03 PDT</p>
+<p><b>Blueprint verification:</b> The current official Professional Cloud Network Engineer certification page and official exam guide were checked on September 25, 2026. The guide still defines six domains: Designing and planning a Google Cloud VPC network (~21%), Implementing a VPC network (~20%), Configuring managed network services (~16%), Configuring and implementing hybrid and multi-cloud network interconnectivity (~16%), Managing, monitoring, and troubleshooting network operations (~14%), and Configuring, implementing, and managing a cloud network security solution (~13%). The quiz therefore uses <b>11 / 10 / 8 / 8 / 7 / 6</b> questions.</p>
+<p><a href="https://cloud.google.com/learn/certification/cloud-network-engineer">Official certification page</a> · <a href="https://services.google.com/fh/files/misc/042426_professional_cloud_network_engineer_exam_guide_english.pdf">Official exam guide</a></p>
+<h3>Executive study summary</h3>
+<p>Today’s twelve lessons deliberately avoid the successful-run fingerprints in the active 30-day ledger. The focus is on underused but exam-relevant control surfaces: converting auto-mode VPCs to custom mode, multi-cluster Gateway control and data planes, Kubernetes ExternalDNS with Cloud DNS, load-balancer custom headers, protocol forwarding, Cloud Router BGP-task failure domains, Dedicated Interconnect BGP-address governance, HA VPN packet-rate scaling, traffic that sits outside ordinary VPC-firewall allow/deny semantics, Cloud Armor hierarchical policy chaining, Cloud DNS ALIAS synthesis, and global external Application Load Balancer custom error responses.</p>
+<p class="notice"><b>Uniqueness gate:</b> prior lessons on generic VPC IP/MTU design, VPC peering, Gateway API, Cloud DNS routing/peering/DNSSEC, Cloud Router timers/BFD/route policy, Interconnect MTU/redundancy/MACsec, HA VPN topology/ciphers/observability, firewall statefulness/policy evaluation, Cloud Armor managed rules, and load-balancer protocol/traffic-management topics were treated as blocked. The lessons below focus on different feature mechanics, source cases, failure stories, and decision points.</p>
+</div>
+
+<section class="lesson" data-domain="1,2,6">
+<h2>1. Auto-mode VPC exit strategy and preventing default-network creation</h2>
+<span class="tag">Domain 1 — Design and planning</span><span class="tag">Domain 2 — VPC implementation</span><span class="tag">Domain 6 — Security</span>
+<div class="src"><b>Primary authoritative source:</b> <a href="https://docs.cloud.google.com/vpc/docs/vpc">VPC networks</a><br><b>Supporting authoritative source:</b> <a href="https://docs.cloud.google.com/sdk/gcloud/reference/compute/networks/update">gcloud compute networks update</a></div>
+<h3>Problem, architecture, and migration behavior</h3>
+<p>Auto mode is optimized for fast starts, not deliberate enterprise address governance. It automatically creates one subnet in every Google Cloud region from a predefined set inside <code>10.128.0.0/9</code>, and newly launched regions can cause additional subnets to appear. Custom mode creates no subnets automatically and gives the operator explicit control over regions and CIDRs. Because every auto-mode VPC uses the same predefined ranges, two auto-mode VPCs are poor candidates for direct VPC Network Peering, and the ranges can also collide with RFC 1918 space already used on premises.</p>
+<p>Conversion from auto mode to custom mode is <b>one way</b>. Google preserves all existing automatically created and manually added subnets, including names and IP ranges. What changes is future behavior: Google stops automatically adding regional subnets, and commands or API calls that previously relied on implicit auto-subnet selection need an explicit subnet reference.</p>
+<pre class="mermaid">flowchart LR
+A["Auto-mode VPC<br/>regional subnets from 10.128.0.0/9"] --> C{"Switch to custom mode"}
+C --> P["Existing subnets preserved"]
+C --> N["No future automatic regional subnets"]
+N --> E["New resources explicitly select subnet"]
+O["Org policy<br/>compute.skipDefaultNetworkCreation"] --> X["New projects start without default VPC"]
+</pre>
+<p><b>What to notice:</b> converting a network and preventing future default networks solve two different lifecycle problems. Conversion fixes an existing VPC’s creation mode; organization policy prevents the default auto-mode VPC from appearing in future projects.</p>
+<h3>Design choices, constraints, and security posture</h3>
+<table><tr><th>Choice</th><th>Use when</th><th>Important consequence</th></tr>
+<tr><td>Remain auto mode</td><td>Short-lived labs where every-region subnets are convenient</td><td>Predefined address plan; new regions can add subnets</td></tr>
+<tr><td>Convert auto → custom</td><td>Existing project needs controlled growth</td><td>One-way; existing subnets remain</td></tr>
+<tr><td>Create custom from start</td><td>Production or hybrid environment</td><td>You explicitly design every regional subnet</td></tr>
+<tr><td>Enforce <code>compute.skipDefaultNetworkCreation</code></td><td>Organization wants clean project landing zones</td><td>New projects inherit no default network where policy applies</td></tr></table>
+<p>The default network is not just an auto-mode VPC; it also arrives with permissive convenience firewall rules such as SSH and RDP from broad source ranges. Preventing it avoids a later cleanup race and pushes projects toward intentional landing-zone networking.</p>
+<h3>Validated operation and troubleshooting</h3>
+<pre class="code">gcloud compute networks update NETWORK_NAME   --switch-to-custom-subnet-mode</pre>
+<p>After conversion, inventory automation that creates VMs, instance templates, managed instance groups, or other subnet-bound resources. A common failure is not packet loss but a provisioning error because a script previously omitted <code>--subnet</code> while auto mode supplied the regional subnet implicitly. Verify subnet names and CIDRs before and after conversion, then test the same deployment pipeline with explicit subnet selection.</p>
+<p class="take"><b>Exam anchor:</b> custom mode is the normal production choice; auto-to-custom preserves subnets but is irreversible, while <code>compute.skipDefaultNetworkCreation</code> is a governance control for future projects.</p>
+</section>
+
+<section class="lesson" data-domain="1,2,3">
+<h2>2. GKE multi-cluster Gateway: config cluster, ServiceImport, and fleet-wide backends</h2>
+<span class="tag">Domain 1 — Design and planning</span><span class="tag">Domain 2 — Implementation</span><span class="tag">Domain 3 — Managed services</span>
+<div class="src"><b>Primary authoritative source:</b> <a href="https://docs.cloud.google.com/kubernetes-engine/docs/concepts/multi-cluster-gateways">About multi-cluster Gateways</a><br><b>Supporting authoritative sources:</b> <a href="https://docs.cloud.google.com/kubernetes-engine/docs/how-to/deploy-external-multi-cluster-gateway">Deploy an external multi-cluster Gateway</a> · <a href="https://docs.cloud.google.com/kubernetes-engine/docs/how-to/multi-cluster-services">Configure multi-cluster Services</a></div>
+<h3>Control plane and data plane</h3>
+<p>A multi-cluster Gateway (MCG) is not “a Gateway object copied everywhere.” Participating GKE clusters register to a fleet, and one cluster is designated as the <b>config cluster</b>. Gateway and HTTPRoute resources for the multi-cluster entry point live there. The GKE Gateway controller watches that API and provisions the corresponding Google Cloud Application Load Balancer resources.</p>
+<p>Backend discovery uses Multi-cluster Services (MCS). Each exporting cluster has a normal Service plus a same-name, same-namespace <code>ServiceExport</code>. The MCS controller creates a <code>ServiceImport</code> representation across fleet clusters. For an MCG HTTPRoute, the backend reference is a <code>ServiceImport</code>, not a normal Service. The load balancer can then send traffic directly to healthy Pods in multiple clusters as one logical backend pool.</p>
+<pre class="mermaid">flowchart LR
+CFG["Config cluster<br/>Gateway + HTTPRoute"] --> CTRL["GKE Gateway controller"]
+CTRL --> ALB["Google Cloud Application LB"]
+C1["Cluster A<br/>Service + ServiceExport"] --> MCS["MCS controller"]
+C2["Cluster B<br/>Service + ServiceExport"] --> MCS
+MCS --> SI["ServiceImport"]
+CFG --> SI
+ALB --> P1["Healthy Pods A"]
+ALB --> P2["Healthy Pods B"]
+</pre>
+<h3>Availability, scope, and hard limits</h3>
+<p>Choose a regional or otherwise highly available config cluster because losing its Kubernetes API does not instantly erase the existing load balancer, but it prevents desired-state reconciliation and configuration updates. Google documents MCG as a global service; if the fleet control plane has a regional failure, it fails statically and makes no further load-balancer changes until recovery.</p>
+<p>All clusters attached to one multi-cluster Gateway must use the same VPC, and cross-project load balancing is not supported for the MCG itself. MCS has its own scaling guidance: a namespaced Service is safely exported from up to five clusters; keeping a Service below 250 Pods is the documented safe guideline; and Google recommends no more than 250 unique exported Service ports. MCS supports ClusterSetIP and headless Services, not NodePort or LoadBalancer Services. Each MCS consumes backend-service quota, and each zone of each exporting cluster creates a NEG.</p>
+<h3>Failure scenario and verification</h3>
+<p>If an HTTPRoute is accepted but no backends appear, first verify that the route references <code>group: net.gke.io</code>, <code>kind: ServiceImport</code>, and the correct port. Then inspect the corresponding ServiceImport and its derived EndpointSlice to see whether MCS propagated endpoints. If one cluster’s Pods are unhealthy, the Google load balancer can use remaining healthy capacity in the other cluster without changing the route object.</p>
+<table><tr><th>Object</th><th>Where it lives</th><th>Role</th></tr>
+<tr><td>Gateway / HTTPRoute</td><td>Config cluster</td><td>Desired north-south routing</td></tr>
+<tr><td>ServiceExport</td><td>Each exporting cluster</td><td>Publishes a namespaced Service to fleet</td></tr>
+<tr><td>ServiceImport</td><td>Created by MCS</td><td>Logical cross-cluster backend identity</td></tr>
+<tr><td>NEG / backend service</td><td>Google Cloud LB resources</td><td>Direct data-plane delivery to healthy Pods</td></tr></table>
+<p class="take"><b>Anchor:</b> MCG centralizes routing intent in one config cluster; MCS supplies cross-cluster backend identity and endpoint propagation.</p>
+</section>
+
+<section class="lesson" data-domain="2,3,5">
+<h2>3. Kubernetes ExternalDNS with Cloud DNS: record automation, ownership, and safe reconciliation</h2>
+<span class="tag">Domain 2 — Implementation</span><span class="tag">Domain 3 — Managed services</span><span class="tag">Domain 5 — Operations</span>
+<div class="src"><b>Primary standards/implementation source:</b> <a href="https://github.com/kubernetes-sigs/external-dns">Kubernetes SIG Network ExternalDNS</a><br><b>Authoritative Google Cloud context:</b> <a href="https://docs.cloud.google.com/dns/docs/records-overview">Cloud DNS records overview</a><br><b>Source-role note:</b> ExternalDNS behavior comes from the Kubernetes SIG project; Cloud DNS behavior comes from Google Cloud documentation.</div>
+<h3>What problem it solves — and what it is not</h3>
+<p>ExternalDNS is a Kubernetes controller that watches selected Kubernetes resources and reconciles desired DNS records into an external DNS provider such as Cloud DNS. It is <b>not</b> the in-cluster DNS server and does not replace kube-dns or Cloud DNS for GKE service discovery. Its job is to convert objects such as LoadBalancer Services, Ingresses, or supported Gateway API sources into provider-side DNS records.</p>
+<p>A common pattern is to annotate a Service with the hostname that should be published. ExternalDNS compares Kubernetes desired state with provider records and submits changes. This is especially useful when a load balancer IP changes during service recreation: the controller updates the DNS record automatically rather than relying on a ticket or manual gcloud command.</p>
+<pre class="mermaid">flowchart LR
+K8S["Kubernetes Service / Ingress / Route"] --> ED["ExternalDNS controller"]
+ED --> DES["Desired DNS record set"]
+ED --> OWN["TXT ownership registry"]
+DES --> API["Cloud DNS API"]
+API --> Z["Managed public/private zone"]
+R["Recursive resolver"] --> Z
+</pre>
+<h3>Ownership and blast-radius controls</h3>
+<p>Use <code>--domain-filter</code> to constrain which DNS suffixes the controller can manage. ExternalDNS strongly recommends a stable, unique <code>--txt-owner-id</code>; TXT registry records let a controller distinguish records it owns from unrelated records already in the zone. Changing TXT ownership settings after deployment can orphan ownership state, so treat the owner ID as durable infrastructure metadata.</p>
+<p>Before granting write access, run with <code>--dry-run</code> and inspect proposed changes. Deletion semantics are also deliberate: with a sync policy, removing the Kubernetes source can delete the owned DNS record; with upsert-only behavior, deleted Kubernetes objects do not automatically remove records. That difference matters during blue/green migrations and accidental object deletions.</p>
+<h3>Validated controller pattern and troubleshooting</h3>
+<pre class="code">kubectl annotate service web   "external-dns.kubernetes.io/hostname=web.example.org."
+
+external-dns   --provider=google   --google-project=DNS_PROJECT_ID   --source=service   --domain-filter=example.org   --txt-owner-id=gke-prod-01   --dry-run</pre>
+<p>When a record does not appear, separate the pipeline into stages: (1) is the source object watched, (2) does its hostname pass the domain filter, (3) does ExternalDNS produce a desired endpoint, (4) does controller identity have Cloud DNS write access, and (5) does ownership policy permit the change? Only after the Cloud DNS record exists should you debug recursive caching and TTL behavior.</p>
+<table><tr><th>Component</th><th>Responsibility</th><th>Common mistake</th></tr>
+<tr><td>ExternalDNS</td><td>Reconcile Kubernetes intent into DNS provider</td><td>Treating it as a resolver</td></tr>
+<tr><td>Cloud DNS</td><td>Authoritative managed-zone records</td><td>Granting controller access to overly broad zones</td></tr>
+<tr><td>TXT registry</td><td>Track controller ownership</td><td>Changing owner ID and losing ownership continuity</td></tr>
+<tr><td>Recursive resolver</td><td>Cache and answer clients</td><td>Blaming controller while stale TTL remains cached</td></tr></table>
+<p class="take"><b>Anchor:</b> ExternalDNS is a reconciliation controller; kube-dns/Cloud DNS for GKE resolve cluster service names. They solve different DNS problems.</p>
+</section>
+
+<section class="lesson" data-domain="3,5,6">
+<h2>4. Global external Application Load Balancer custom headers: precedence, metadata, and limits</h2>
+<span class="tag">Domain 3 — Managed services</span><span class="tag">Domain 5 — Operations</span><span class="tag">Domain 6 — Security</span>
+<div class="src"><b>Primary authoritative source:</b> <a href="https://docs.cloud.google.com/load-balancing/docs/https/custom-headers-global">Create custom headers in backend services — global external ALB</a></div>
+<h3>Where transformation occurs</h3>
+<p>Custom request headers are added by the load balancer when it forwards a <em>client request</em> to the backend. Custom response headers are set before the proxy returns a response to the client. Header values can include load-balancer-provided variables such as estimated client RTT, geographic information derived from the client source IP, TLS parameters, and CDN state where applicable.</p>
+<p>For global external Application Load Balancers, Google recommends centralizing transformations in the URL map when practical. If the same header is configured in both the backend service and URL map, the URL-map value wins and the backend-service value is ignored for that name. This precedence rule matters during migrations because two teams can otherwise think they own the same header.</p>
+<pre class="mermaid">sequenceDiagram
+participant C as Client
+participant U as URL map
+participant B as Backend service
+participant A as App backend
+C->>U: HTTP request
+U->>B: Apply URL-map header transforms
+B->>A: Apply backend-service headers unless same name is already set by URL map
+A-->>B: Response
+B-->>C: Response headers set before delivery
+</pre>
+<h3>Security and health-check caveats</h3>
+<p>Custom request headers are not added to health-check probes. If an application refuses requests unless a custom authorization header is present, real client traffic can succeed while health checks fail. Solve that by designing a health endpoint that does not depend on a header the probe never receives, rather than trying to “fix” the health check with a header feature that does not apply.</p>
+<p>Cloud Armor can also insert a header. If Cloud Armor and the load balancer insert the same header name, the load balancer’s value overwrites the Cloud Armor value. Use separate names for security signals that must survive to the backend.</p>
+<h3>Limits, validation, and troubleshooting</h3>
+<table><tr><th>Limit</th><th>Value</th><th>Operational meaning</th></tr>
+<tr><td>Configured request headers / backend service</td><td>16</td><td>Hard limit</td></tr>
+<tr><td>Configured response headers / backend service</td><td>16</td><td>Hard limit</td></tr>
+<tr><td>Total configured request-header size</td><td>8 KB before variable expansion</td><td>Name + value total</td></tr>
+<tr><td>Total configured response-header size</td><td>8 KB before variable expansion</td><td>Name + value total</td></tr></table>
+<p>Do not use prohibited hop-by-hop headers or reserved prefixes such as Google-managed header namespaces. Header names are case-insensitive; HTTP/2 encodes header names in lower case. For a missing value, capture a backend request and determine whether the URL map or backend service owns the transformation, whether the variable has a value for that request type, and whether another system overwrote the header.</p>
+<p class="take"><b>Anchor:</b> header transforms are proxy-plane metadata tools, not health-check headers or an identity system. Know precedence and hard limits.</p>
+</section>
+
+<section class="lesson" data-domain="1,2,5">
+<h2>5. Protocol forwarding: single-VM target instances with destination-IP preservation</h2>
+<span class="tag">Domain 1 — Design</span><span class="tag">Domain 2 — Implementation</span><span class="tag">Domain 5 — Troubleshooting</span>
+<div class="src"><b>Primary authoritative source:</b> <a href="https://docs.cloud.google.com/load-balancing/docs/protocol-forwarding">Protocol forwarding overview</a></div>
+<h3>Architecture and packet flow</h3>
+<p>Protocol forwarding uses a <b>regional forwarding rule</b> that points to a <b>zonal target instance</b>, which in turn references exactly one VM. It preserves the forwarding rule’s destination IP instead of translating it to the VM’s interface address. That makes it useful for appliances or protocols where software needs to bind to the published address, and for special IP mobility patterns where the target VM can be changed behind a stable rule.</p>
+<p>It is not a passthrough load balancer. There is no backend service, no distribution across a pool, and no health check. The target instance and referenced VM must be in a zone belonging to the forwarding rule’s region.</p>
+<pre class="mermaid">flowchart LR
+C["Client"] --> F["Regional forwarding rule<br/>VIP + protocol + ports"]
+F --> T["Zonal target instance"]
+T --> V["Single VM"]
+V -->|"Direct return<br/>TCP source = VIP"| C
+M["Operator / automation"] -. "Moves target to replacement VM" .-> T
+</pre>
+<h3>Protocol and address semantics</h3>
+<p>External protocol forwarding supports AH, ESP, GRE, ICMP, ICMPv6, SCTP, TCP, UDP, and an L3-default option for broad protocol handling; internal protocol forwarding supports a corresponding Layer-3 model with regional internal addresses. For TCP, the target VM must reply using the forwarding-rule IP as the source so the client can associate the response with its established connection. Connectionless protocols have more source flexibility, but clients generally still expect replies from the destination they contacted.</p>
+<p>Software on the target VM should listen on the forwarding-rule IP or a wildcard address and the selected port. A target-instance VM can also use an associated external forwarding-rule IP as the source of outbound internet connections in specialized designs.</p>
+<h3>Operations and failure design</h3>
+<table><tr><th>Characteristic</th><th>Protocol forwarding</th><th>Passthrough load balancer</th></tr>
+<tr><td>Targets</td><td>One target instance → one VM</td><td>Backend service → backend pool</td></tr>
+<tr><td>Health checks</td><td>Not supported</td><td>Supported</td></tr>
+<tr><td>Destination IP</td><td>Forwarding-rule IP preserved</td><td>Passthrough semantics</td></tr>
+<tr><td>Failover</td><td>Your automation changes target</td><td>Health-aware backend selection</td></tr></table>
+<p>Because there is no health check, build an external synthetic check or appliance-specific heartbeat and automation if you require recovery. Internal protocol forwarding can switch a forwarding rule between a target instance and a compatible passthrough load-balancer backend service without recreating the rule; the external transition requires recreation. For fragmented UDP, Google recommends an all-ports UDP rule or L3-default rule so non-initial fragments without port fields still match.</p>
+<p class="take"><b>Anchor:</b> protocol forwarding is a stable regional IP/protocol selector for one VM, not a health-aware load balancer.</p>
+</section>
+
+<section class="lesson" data-domain="4,5">
+<h2>6. Cloud Router BGP-task placement: control-plane redundancy is not packet forwarding</h2>
+<span class="tag">Domain 4 — Hybrid connectivity</span><span class="tag">Domain 5 — Operations</span>
+<div class="src"><b>Primary authoritative source:</b> <a href="https://docs.cloud.google.com/network-connectivity/docs/router/concepts/how-cloud-router-works">How Cloud Router works</a><br><b>Supporting authoritative source:</b> <a href="https://docs.cloud.google.com/network-connectivity/docs/router/how-to/viewing-logs-metrics">View Cloud Router logs and metrics</a></div>
+<h3>Three different planes</h3>
+<p>Cloud Router is an API abstraction backed by BGP tasks, a regional dynamic-route control plane, and the VPC control/data planes. A BGP task speaks BGP and exchanges prefixes; it is <b>not in the packet path</b>. The regional dynamic-route control plane consumes BGP information and feeds the VPC control plane, which programs routes into the distributed VPC data plane. Andromeda ultimately forwards packets.</p>
+<pre class="mermaid">flowchart LR
+P["Peer router"] <--> B["Cloud Router BGP task"]
+B --> D["Regional dynamic-route control plane"]
+D --> C["VPC network control plane"]
+C --> DP["Distributed VPC data plane"]
+DP --> W["Workload traffic"]
+P -. "Packets do not traverse BGP task" .-> DP
+</pre>
+<h3>Why interface placement changes BGP-task diversity</h3>
+<p>Google maps interfaces to BGP tasks based on failure-domain alignment. VLAN attachments in the same edge availability domain can share one BGP task; attachments in different edge availability domains use two. HA VPN tunnels tied to the same HA VPN gateway interface number can share a task, while tunnels across interface 0 and interface 1 use two. Router appliance redundant interfaces use two tasks. A mixed design can use as many as three tasks when it spans both primary domains plus Classic VPN.</p>
+<table><tr><th>Interface pattern</th><th>Typical BGP tasks</th><th>Design interpretation</th></tr>
+<tr><td>VLAN attachments in one edge availability domain</td><td>1</td><td>Same control-plane failure domain</td></tr>
+<tr><td>VLAN attachments split across both domains</td><td>2</td><td>BGP speaker diversity</td></tr>
+<tr><td>HA VPN tunnels all on same gateway interface number</td><td>1</td><td>Shared BGP-task grouping</td></tr>
+<tr><td>HA VPN tunnels across interface 0 and 1</td><td>2</td><td>Control-plane diversity</td></tr></table>
+<h3>Maintenance and troubleshooting</h3>
+<p>During normal software maintenance, BGP tasks can migrate. The important diagnostic is not “the Cloud Router forwarded bad packets,” because it never forwards packets. Use Cloud Router logs and the peer device’s BGP state to distinguish a control-plane speaker event from an underlying VPN or Interconnect data-path fault. Google documents log events such as <code>Router task activated</code> when diagnosing resets.</p>
+<p>An unexpected BGP-task failure can leave learned and advertised routes present for the negotiated hold interval. That differs from an immediate data-plane link failure. When investigating a transient BGP reset with no observed traffic drop, correlate router event logs, peer logs, path redundancy, and actual traffic telemetry before declaring a network outage.</p>
+<p class="take"><b>Anchor:</b> Cloud Router programs routes; Andromeda forwards packets. Design BGP-task diversity by using the product’s real failure domains.</p>
+</section>
+
+<section class="lesson" data-domain="2,4">
+<h2>7. Dedicated Interconnect VLAN attachment BGP-address governance and immutable fields</h2>
+<span class="tag">Domain 2 — Implementation</span><span class="tag">Domain 4 — Hybrid connectivity</span>
+<div class="src"><b>Primary authoritative source:</b> <a href="https://docs.cloud.google.com/network-connectivity/docs/interconnect/how-to/dedicated/creating-vlan-attachments">Create Dedicated Interconnect VLAN attachments</a><br><b>Supporting authoritative source:</b> <a href="https://docs.cloud.google.com/network-connectivity/docs/interconnect/how-to/dedicated/modifying-vlan-attachments">Modify Dedicated Interconnect VLAN attachments</a></div>
+<h3>Attachment-to-router relationship</h3>
+<p>A Dedicated Interconnect VLAN attachment allocates a VLAN on a physical Interconnect connection and associates that logical attachment with a Cloud Router in the VPC/region being connected. Google can auto-assign the VLAN ID and BGP peering addresses, but enterprises with address-management constraints can control those values at creation time.</p>
+<p>For normal link-local IPv4 BGP addressing, Google allocates from <code>169.254.0.0/16</code>. You can supply up to 16 candidate prefixes, each <code>/29</code> or shorter, and Google selects an unused <code>/29</code>. The candidate space must be unique across all Cloud Routers in all regions of that VPC. Google assigns one address to Cloud Router, one to the customer router, and reserves the remaining addresses in the selected /29.</p>
+<pre class="mermaid">flowchart LR
+I["Dedicated Interconnect connection"] --> V["VLAN attachment<br/>VLAN ID 2-4093"]
+V --> G["Cloud Router interface"]
+G <--> B["BGP session"]
+B <--> R["Customer router"]
+P["Candidate prefixes<br/>169.254.0.0/16<br/>up to 16, /29 or shorter"] --> V
+V --> S["Google selects unused /29"]
+</pre>
+<h3>Candidate subnets versus custom addresses</h3>
+<p>Dedicated Interconnect also supports explicitly supplied custom BGP IPs for both Cloud Router and the customer router under documented constraints. You cannot combine custom IPv4 addresses with candidate IPv4 subnets for the same address allocation. Candidate subnets are an IPv4 mechanism; IPv6 uses different automatic/custom options.</p>
+<table><tr><th>Property</th><th>Can choose at creation?</th><th>Can modify in place later?</th></tr>
+<tr><td>VLAN ID</td><td>Yes, 2–4093 or automatic</td><td><b>No — recreate attachment</b></td></tr>
+<tr><td>BGP peer IP addresses</td><td>Automatic, candidate range, or supported custom addresses</td><td><b>No — recreate attachment</b></td></tr>
+<tr><td>Peer ASN</td><td>Configured on Cloud Router BGP peer</td><td>Yes; it is not an attachment property</td></tr></table>
+<h3>Failure scenarios and lifecycle planning</h3>
+<p>If an IPAM team later discovers that a selected BGP link subnet conflicts with an enterprise convention, you cannot simply edit the VLAN attachment’s BGP IPs. Create a replacement attachment, establish the new BGP session, validate route exchange, shift traffic, and then remove the old attachment. The same recreate rule applies to the VLAN ID. This is why BGP peering space and VLAN-ID governance belong in the design review before provisioning.</p>
+<pre class="code">gcloud compute interconnects attachments dedicated create ATTACHMENT_NAME   --region=REGION   --router=ROUTER_NAME   --interconnect=INTERCONNECT_NAME   --candidate-subnets=169.254.40.0/28,169.254.80.0/28</pre>
+<p class="take"><b>Anchor:</b> candidate prefixes constrain Google’s /29 selection; VLAN ID and BGP peering addresses are creation-time choices, not routine mutable settings.</p>
+</section>
+
+<section class="lesson" data-domain="1,4,5">
+<h2>8. HA VPN packet-rate capacity planning and horizontal tunnel scale-out</h2>
+<span class="tag">Domain 1 — Design</span><span class="tag">Domain 4 — Hybrid connectivity</span><span class="tag">Domain 5 — Operations</span>
+<div class="src"><b>Primary authoritative source:</b> <a href="https://docs.cloud.google.com/network-connectivity/docs/vpn/concepts/topologies-increase-bandwidth">HA VPN topologies to increase bandwidth</a><br><b>Supporting authoritative source:</b> <a href="https://docs.cloud.google.com/network-connectivity/docs/vpn/concepts/overview">Cloud VPN overview — network bandwidth</a></div>
+<h3>The real unit: packets per second, both directions combined</h3>
+<p>Each Cloud VPN tunnel supports up to <b>250,000 packets per second</b> for the sum of ingress and egress. Depending on average packet size, that corresponds to roughly 1–3 Gbps. Capacity planning based only on “3 Gbps per tunnel” is therefore unsafe: small packets reach the pps ceiling earlier, and bidirectional traffic shares the same pps budget.</p>
+<p>Scale out by adding more tunnels. For example, Google’s guidance for a 600,000 pps requirement uses three <em>pairs</em> of HA VPN tunnels (six tunnels) to provide the required aggregate capacity while retaining failover capacity.</p>
+<pre class="mermaid">flowchart LR
+A["Required aggregate traffic<br/>600k pps"] --> M["250k pps per tunnel<br/>ingress + egress"]
+M --> P1["Tunnel pair 1"]
+M --> P2["Tunnel pair 2"]
+M --> P3["Tunnel pair 3"]
+P1 --> R["Remote VPN estate"]
+P2 --> R
+P3 --> R
+</pre>
+<h3>IP addressing and topology choices</h3>
+<p>If multiple tunnels can share the same HA VPN interface public IP, a gateway interface can support multiple peer tunnels in applicable topologies. If every tunnel needs a distinct pair of public IPs, use additional HA VPN gateways. Project tunnel quotas still apply even when a gateway interface can logically support many tunnels.</p>
+<table><tr><th>Requirement</th><th>Design implication</th></tr>
+<tr><td>More aggregate pps</td><td>Add tunnels and distribute routes/flows across them</td></tr>
+<tr><td>Retain throughput after a tunnel failure</td><td>Size normal state with N+1-style headroom, not at absolute aggregate maximum</td></tr>
+<tr><td>Distinct public IP per tunnel</td><td>Add HA VPN gateways</td></tr>
+<tr><td>Measure saturation</td><td>Use sent + received traffic and packet-size-aware analysis</td></tr></table>
+<h3>Monitoring and troubleshooting</h3>
+<p>Google’s byte-based VPN metrics need unit discipline: 3 Gbps is 375 MB/s, and the documented tunnel ceiling is still fundamentally pps-based. Monitor both sent and received volume and, where possible, packet rate and packet-size distribution. A tunnel can be pps-bound without showing 3 Gbps.</p>
+<p><b>Scenario:</b> a design averages 2.2 Gbps but consists mostly of small transactional packets and experiences loss under bursts. Before blaming encryption algorithms or BGP convergence, check whether the combined packet rate approaches the tunnel’s 250k pps limit. If so, horizontal tunnel scale-out is the appropriate lever.</p>
+<p class="take"><b>Anchor:</b> Cloud VPN capacity is 250k pps per tunnel, ingress plus egress. Engineer tunnel count for packet rate and failure headroom.</p>
+</section>
+
+<section class="lesson" data-domain="2,5,6">
+<h2>9. VPC firewall control boundaries: metadata, DHCP, SMTP, and protocol restrictions outside ordinary rules</h2>
+<span class="tag">Domain 2 — Implementation</span><span class="tag">Domain 5 — Troubleshooting</span><span class="tag">Domain 6 — Security</span>
+<div class="src"><b>Primary authoritative source:</b> <a href="https://docs.cloud.google.com/firewall/docs/firewalls">VPC firewall rules — blocked, limited, and always allowed traffic</a></div>
+<h3>Why an allow or deny rule is not the entire packet policy</h3>
+<p>VPC firewall and firewall-policy evaluation is only one layer of Google Cloud packet handling. Google separately blocks or limits some traffic and always permits certain platform-local traffic. Troubleshooting must therefore ask: “Is this flow even subject to the VPC firewall?” before spending time changing priorities.</p>
+<p>The metadata server is the clearest exception. VM communication with the local metadata service at <code>169.254.169.254</code> (and the documented IPv6 metadata address) is always allowed and is not controlled by VPC firewall rules or hierarchical firewall policies. The metadata service supplies essential functions such as DHCP, DNS-resolution plumbing, metadata, and NTP.</p>
+<pre class="mermaid">flowchart TD
+F["Packet flow"] --> Q{"Subject to VPC firewall?"}
+Q -->|"Metadata / same-VM special traffic"| A["Platform always-allowed path"]
+Q -->|"Ordinary VM traffic"| E["Firewall policy + VPC rule evaluation"]
+Q -->|"Platform-limited traffic"| P["Google platform restriction"]
+P --> D["Examples: rogue DHCP offers, some external SMTP/unsupported protocols"]
+</pre>
+<h3>Blocked and limited examples</h3>
+<p>Google blocks DHCPv4 offers/acknowledgments to UDP 68 and DHCPv6 equivalents from sources other than the metadata server. External IP addresses support a defined set of IP protocols; a forwarding rule further restricts what protocols/ports the resource actually accepts. External TCP port 25 SMTP egress is also subject to Google anti-abuse policy independently of your own firewall allow rules; TLS submission ports such as 465/587 are treated differently.</p>
+<table><tr><th>Traffic</th><th>Firewall rule alone controls it?</th><th>Diagnostic implication</th></tr>
+<tr><td>VM ↔ metadata server</td><td>No; always allowed platform path</td><td>A deny-all egress rule is not proof metadata is blocked</td></tr>
+<tr><td>Rogue DHCP offers</td><td>No; platform blocks them</td><td>An allow UDP rule cannot authorize a competing DHCP server</td></tr>
+<tr><td>External TCP/25 SMTP</td><td>Not necessarily</td><td>Project anti-abuse state can block despite firewall allow</td></tr>
+<tr><td>Ordinary application flow</td><td>Yes, along with routes and product-specific controls</td><td>Evaluate effective policies/rules normally</td></tr></table>
+<h3>Troubleshooting workflow</h3>
+<p>For a failed flow, classify the destination and protocol, verify route/path existence, then determine whether the traffic is ordinary firewall-controlled traffic or a documented platform exception/restriction. For TCP/25, check the project’s SMTP-egress status before adding increasingly broad egress allows. For DHCP behavior, remember that Google intentionally prevents arbitrary in-VPC DHCP responses from replacing the platform service.</p>
+<p class="take"><b>Anchor:</b> “firewall says allow” does not guarantee Google Cloud permits every platform-sensitive flow, and “deny all” does not override the metadata path.</p>
+</section>
+
+<section class="lesson" data-domain="1,6">
+<h2>10. Cloud Armor hierarchical security policies: inheritance, evaluation order, and goto_next</h2>
+<span class="tag">Domain 1 — Design</span><span class="tag">Domain 6 — Network security</span>
+<div class="src"><b>Primary authoritative source:</b> <a href="https://docs.cloud.google.com/armor/docs/hierarchical-policies-overview">Hierarchical security policies overview</a></div>
+<h3>Ownership, association, and inheritance</h3>
+<p>Cloud Armor hierarchical security policies extend WAF and DDoS controls beyond a single project/backend. A policy can be owned by an organization or folder and associated with an organization, folder, or project node. Once associated, protected resources under that node inherit the policy. Creation alone does not enforce anything; association is the step that places the policy into the effective chain.</p>
+<p>This design separates central controls such as enterprise-wide deny conditions from application-specific service-level policy. Operators can inspect the effective Cloud Armor rules that apply to a protected resource across all hierarchical and service-level policies.</p>
+<pre class="mermaid">flowchart TD
+O["Organization hierarchical policy"] --> F["Parent folder policy"]
+F --> SF["Subfolder policy"]
+SF --> P["Project hierarchical policy"]
+P --> S["Service-level policy"]
+O -. "allow/deny = terminal" .-> X["Stop evaluation"]
+O -. "goto_next" .-> F
+</pre>
+<h3>Evaluation order and terminal actions</h3>
+<p>Evaluation order is fixed by hierarchy: organization-level policy first, then folder policies from parent to child, then project-level hierarchical policy, then the service-level security policy. This ordering is separate from numeric rule priority inside an individual policy. A low-priority-number service rule cannot “jump ahead” of a matched terminal organization rule.</p>
+<p>Hierarchical policies add the <code>goto_next</code> action. A matching <code>goto_next</code> stops evaluating the remaining rules in the <em>current</em> policy and continues with the next policy in the hierarchy. By contrast, a matching allow or deny is terminal for the request; later policies do not get to re-decide it.</p>
+<table><tr><th>Action</th><th>Effect</th><th>Use case</th></tr>
+<tr><td>deny</td><td>Terminal block</td><td>Organization-wide forbidden source/pattern</td></tr>
+<tr><td>allow</td><td>Terminal allow</td><td>Explicit enterprise exception when intended</td></tr>
+<tr><td>goto_next</td><td>Skip remainder of current policy; evaluate next policy</td><td>Delegate decision to child/service policy for selected traffic</td></tr></table>
+<h3>Design failure scenario</h3>
+<p>A central team creates an organization-level allow for a trusted source expecting the application’s service-level WAF to continue evaluating SQL injection. Because allow is terminal, the request can bypass later service-policy rules. If the intent is merely “do not apply the rest of this central policy; let the application policy decide,” use <code>goto_next</code> instead.</p>
+<p>Propagation after organizational changes can take time, so rollout plans should include staged association, preview/log analysis where available, and effective-policy inspection. Policy owners should document which decisions are terminal and which are delegated.</p>
+<p class="take"><b>Anchor:</b> hierarchy defines policy order; priority orders rules inside a policy; <code>goto_next</code> is the delegation primitive.</p>
+</section>
+
+<section class="lesson" data-domain="2,3">
+<h2>11. Cloud DNS ALIAS records: zone-apex synthesis versus ordinary CNAME resolution</h2>
+<span class="tag">Domain 2 — Implementation</span><span class="tag">Domain 3 — Managed services</span>
+<div class="src"><b>Primary authoritative source:</b> <a href="https://docs.cloud.google.com/dns/docs/records-overview">Cloud DNS records overview — ALIAS records</a></div>
+<h3>The zone-apex problem</h3>
+<p>A traditional CNAME cannot be placed at a zone apex because the apex must also contain records such as SOA and NS, and CNAME semantics do not allow coexisting record types at the same owner name. Cloud DNS provides an <b>ALIAS</b> record type, currently documented as Preview, to provide CNAME-like indirection at a public-zone apex while answering clients with ordinary A or AAAA data.</p>
+<p>ALIAS is Cloud DNS-specific and is not exposed to clients as an ALIAS RR. When a resolver asks for an address, Cloud DNS resolves the configured target using Google recursive resolvers and synthesizes A/AAAA records whose owner name is the ALIAS name.</p>
+<pre class="mermaid">sequenceDiagram
+participant R as Recursive/client resolver
+participant A as Cloud DNS authoritative server
+participant G as Google recursive resolver
+participant T as Alias target
+R->>A: A/AAAA query for example.com
+A->>G: Resolve configured ALIAS target
+G->>T: Follow target/CNAME chain as needed
+T-->>G: Address records
+G-->>A: Resolved addresses + TTLs
+A-->>R: Synthesized A/AAAA for example.com
+</pre>
+<h3>TTL, failures, and DNSSEC</h3>
+<p>The TTL of a synthesized address is the smallest of the ALIAS record’s configured TTL and TTLs encountered during target resolution. If target resolution fails with an error response, Cloud DNS returns <code>SERVFAIL</code>; a successful response with no address data results in NODATA. Intermediary CNAMEs found while resolving the ALIAS target are not exposed in the final synthesized answer.</p>
+<p>ALIAS records are available only in Cloud DNS public zones and are <b>not compatible with DNSSEC</b>. That is a decisive architecture tradeoff: if DNSSEC at the zone is mandatory, an ALIAS-based apex design is not appropriate.</p>
+<table><tr><th>Property</th><th>CNAME</th><th>Cloud DNS ALIAS</th></tr>
+<tr><td>Zone apex</td><td>Not usable alongside required apex records</td><td>Designed for apex use</td></tr>
+<tr><td>Who follows target?</td><td>Resolver</td><td>Cloud DNS authoritative service</td></tr>
+<tr><td>Client sees</td><td>CNAME, then address resolution</td><td>Synthesized A/AAAA</td></tr>
+<tr><td>DNSSEC compatibility</td><td>Normal DNS type</td><td>Not compatible</td></tr>
+<tr><td>Zone type</td><td>Standard DNS semantics</td><td>Cloud DNS public zones only</td></tr></table>
+<h3>Scenario and troubleshooting</h3>
+<p>If <code>example.com</code> must point indirectly at a changing SaaS hostname, ALIAS can provide apex flattening. If clients receive SERVFAIL, test the target name independently from a public recursive resolver; an ALIAS cannot synthesize a valid address if its target chain fails. If enabling DNSSEC is a hard compliance requirement, redesign the apex target rather than trying to enable DNSSEC on a zone containing ALIAS records.</p>
+<p class="take"><b>Anchor:</b> CNAME delegates target resolution to the resolver; ALIAS makes Cloud DNS perform target resolution and synthesize apex A/AAAA answers.</p>
+</section>
+
+<section class="lesson" data-domain="3,5,6">
+<h2>12. Global external Application Load Balancer custom error responses</h2>
+<span class="tag">Domain 3 — Managed services</span><span class="tag">Domain 5 — Operations</span><span class="tag">Domain 6 — Security</span>
+<div class="src"><b>Primary authoritative source:</b> <a href="https://docs.cloud.google.com/load-balancing/docs/https/custom-error-response">Custom error response overview</a><br><b>Supporting authoritative source:</b> <a href="https://docs.cloud.google.com/load-balancing/docs/https/configure-custom-error-responses">Configure custom error responses</a></div>
+<h3>Architecture and policy scope</h3>
+<p>Global external Application Load Balancers can replace selected backend- or load-balancer-generated <code>4xx</code>/<code>5xx</code> responses with content from an <b>error service</b>. Policies can vary by status code and by URL-map context such as hosts, paths, request headers, or parameters. The error service can be a backend bucket or backend service; Cloud Storage-backed error content is a common design.</p>
+<p>The feature can also customize errors generated when Cloud Armor denies a request, as long as the custom error policy matches the status code used by the security rule. This lets a platform team return user-friendly HTML to browsers and structured JSON to API clients while keeping the original application/backend isolated from error-content delivery.</p>
+<pre class="mermaid">flowchart LR
+C["Client request"] --> L["Global external ALB"]
+L --> B["Application backend"]
+B -->|"4xx / 5xx"| P{"Custom error policy match?"}
+P -->|"yes"| E["Error service<br/>backend bucket/service"]
+E --> R["Custom body + optional override status"]
+P -->|"no"| O["Original error response"]
+R --> C
+O --> C
+</pre>
+<h3>Status overrides, logging, and caching</h3>
+<p>A custom policy can override the response status sent to the client, even returning 200 for a maintenance page when that behavior is intentionally desired. Logging preserves the original server/load-balancer status in <code>httpRequest.status</code>; when an override is applied, the load-balancer log adds <code>overrideResponseCodeServed</code>. That distinction is essential when dashboards show client success while the backend is actually returning failures.</p>
+<p>When Cloud CDN and negative caching are involved, the caching policy belongs to the backend that generated the error, not simply to the error-service object. An override code changes which negative-caching rule is considered. A 200 override does not use negative caching as an error status.</p>
+<h3>Limits, security, and failure modes</h3>
+<table><tr><th>Constraint</th><th>Effect</th></tr>
+<tr><td>Load balancer type</td><td>Supported only on global external Application Load Balancer, not regional/classic</td></tr>
+<tr><td>Error object fetch fails</td><td>Generic non-branded error is served</td></tr>
+<tr><td>Cloud Storage error content</td><td>Bucket content used for custom responses must meet documented public-read model</td></tr>
+<tr><td>Security scanning</td><td>Custom-error policy does not inspect/filter error object for vulnerabilities</td></tr>
+<tr><td>Authorization header</td><td>Requests carrying it are incompatible with the Cloud Storage error-object path documented by Google</td></tr></table>
+<p>Google also documents that a load balancer containing only backend buckets cannot use this feature; at least one backend service must be attached in addition to a backend bucket. Custom response headers defined on the source of a custom error response are not automatically applied to the outgoing custom error response.</p>
+<p><b>Scenario:</b> an outage dashboard shows a sudden rise in HTTP 200 while backend logs show 503. If a maintenance policy overrides 503 to 200, both observations can be correct. Query <code>overrideResponseCodeServed</code> together with the original <code>httpRequest.status</code> to preserve incident visibility.</p>
+<p class="take"><b>Anchor:</b> custom error responses are a second fetch path with independent content/security concerns. Never let a friendly 200 override hide the original failure signal.</p>
+</section>
+
+<div class="quiz"><h2>Interactive 50-question quiz</h2><p>The distribution is exactly <b>11 / 10 / 8 / 8 / 7 / 6</b> across Domains 1–6. Multiple-select questions are labeled. Select answers and choose <b>Grade quiz</b> for per-question review and total score.</p><div id="quiz"></div><button id="grade">Grade quiz</button><div id="score" class="score"></div></div>
+
+<script>
+const Q=[
+{"d":1,"q":"Why are auto-mode VPCs a poor default for two networks that will later need direct peering?","o":["Every auto-mode VPC uses predefined subnets from the same address plan, creating overlap","Auto-mode VPCs cannot contain routes","Auto-mode VPCs are zonal resources","Peering requires IPv6-only subnets"],"a":[0],"e":"Auto-mode networks share the predefined 10.128.0.0/9-based subnet plan, so overlap makes direct interconnection problematic."},
+{"d":1,"q":"What happens to existing auto-created subnets when an auto-mode VPC is converted to custom mode?","o":["They are deleted","Their names and IP ranges are preserved","They become IPv6-only","They move to a new project"],"a":[1],"e":"The conversion preserves existing automatic and manual subnets; it changes future subnet-creation behavior."},
+{"d":1,"q":"Which governance control prevents new projects from automatically receiving the default VPC?","o":["constraints/compute.skipDefaultNetworkCreation","constraints/compute.vmExternalIpAccess","A Cloud Armor rule","A DNS response policy"],"a":[0],"e":"The skipDefaultNetworkCreation organization-policy constraint prevents creation of the default auto-mode network in inheriting new projects."},
+{"d":1,"q":"Where should multi-cluster Gateway and HTTPRoute objects be placed?","o":["On every member cluster","Only on the designated config cluster","Only in Cloud DNS","Directly on each NEG"],"a":[1],"e":"The config cluster is the centralized desired-state location watched by the GKE Gateway controller."},
+{"d":1,"q":"Why is a highly available config cluster recommended for multi-cluster Gateway?","o":["It raises Cloud DNS TTL","Loss of its API prevents continued reconciliation and configuration changes","It creates more VPC routes","It is required for IPv6"],"a":[1],"e":"Existing load-balancer state can remain, but the controller cannot reconcile new desired state without the config cluster control point."},
+{"d":1,"q":"Which statement best distinguishes protocol forwarding from a passthrough load balancer?","o":["Protocol forwarding targets one VM through a target instance and has no health check","Protocol forwarding always targets three VMs","Protocol forwarding terminates HTTP","Protocol forwarding requires a backend service"],"a":[0],"e":"A target instance references one VM; there is no backend pool or health check."},
+{"d":1,"q":"A service needs 600,000 aggregate VPN packets per second and must retain failover capacity. What design does Google use as the example?","o":["One tunnel","Two tunnels total","Three pairs, six tunnels total","One Classic VPN tunnel"],"a":[2],"e":"Google's HA VPN bandwidth guidance uses three tunnel pairs for a 600k pps requirement with failure capacity."},
+{"d":1,"q":"What is the strongest reason to use an organization-level Cloud Armor hierarchical policy?","o":["Central enforcement across descendant projects/resources","To change Cloud Router ASN","To create subnets automatically","To replace Cloud DNS"],"a":[0],"e":"Hierarchical policies provide centralized inherited WAF/DDoS policy above individual services."},
+{"d":1,"q":"Which architecture requirement is a hard limitation for one GKE multi-cluster Gateway?","o":["All target clusters must be in the same VPC","Every cluster must use a public node IP","All Pods must be in one region","The fleet may contain only one cluster"],"a":[0],"e":"Google documents that one multi-cluster Gateway does not support cross-VPC load balancing."},
+{"d":1,"q":"Why should Dedicated Interconnect BGP candidate space be planned before attachment creation?","o":["The selected BGP IPs cannot be edited in place later","Cloud Router does not use BGP","Candidate space controls Cloud Armor","The IPs are used as workload addresses"],"a":[0],"e":"BGP peer IPs are immutable attachment properties; changing them requires a replacement attachment."},
+{"d":1,"q":"A global external ALB must present branded content during backend failures. Which design component provides that content?","o":["A custom error response error service","A Cloud Router interface","A target instance only","An auto-mode subnet"],"a":[0],"e":"Custom error response policy fetches content from an error service such as a backend bucket or backend service."},
+
+{"d":2,"q":"After converting auto mode to custom mode, what common automation change is required?","o":["Explicitly specify the subnet where commands previously relied on implicit auto-subnet selection","Remove every subnet","Use only IPv6","Disable IAM"],"a":[0],"e":"Custom mode no longer provides the same implicit regional subnet behavior to creation commands."},
+{"d":2,"q":"What backend kind does a multi-cluster Gateway HTTPRoute reference?","o":["ServiceImport","NodePort","Pod directly","Cloud Router"],"a":[0],"e":"MCG uses MCS and references a ServiceImport as the logical multi-cluster backend."},
+{"d":2,"q":"What is ExternalDNS?","o":["A controller that reconciles Kubernetes resources into external DNS provider records","The recursive DNS server inside every Pod","A replacement for Cloud Router","A WAF engine"],"a":[0],"e":"ExternalDNS is a controller, not a DNS server."},
+{"d":2,"q":"Why is a stable --txt-owner-id important for ExternalDNS?","o":["It lets the controller track which DNS records it owns","It enables BGP MD5","It selects a GKE zone","It creates Cloud NAT ports"],"a":[0],"e":"TXT registry ownership helps ExternalDNS safely coexist with other records/controllers."},
+{"d":2,"q":"What destination IP does protocol forwarding deliver to the target VM?","o":["The forwarding-rule IP is preserved","Always the VM primary NIC address","A Cloud NAT IP","The metadata server IP"],"a":[0],"e":"Destination-IP preservation is a core protocol-forwarding behavior."},
+{"d":2,"q":"For TCP protocol forwarding, what source should the target VM use in replies?","o":["The forwarding-rule IP","Any random source IP","169.254.169.254","The Cloud Router BGP IP"],"a":[0],"e":"TCP replies must source from the VIP so the client associates them with the connection."},
+{"d":2,"q":"How can Dedicated Interconnect candidate IPv4 BGP ranges be specified?","o":["Up to 16 prefixes inside 169.254.0.0/16, each /29 or shorter, from which Google chooses an unused /29","Only one /32 from 8.8.8.0/24","Any public /8 with no constraints","IPv6 only"],"a":[0],"e":"That is the documented candidate-subnet mechanism for Dedicated Interconnect."},
+{"d":2,"q":"A VLAN attachment was created with the wrong VLAN ID. What is the supported correction?","o":["Recreate the VLAN attachment with the desired ID","Edit the existing ID in place","Change the BGP ASN only","Modify Cloud DNS"],"a":[0],"e":"VLAN ID is immutable on an existing attachment."},
+{"d":2,"q":"Can an egress deny-all VPC firewall rule block a VM from its local metadata server?","o":["No, metadata-server traffic is a platform always-allowed path","Yes, always","Only if DNSSEC is enabled","Only for UDP"],"a":[0],"e":"VPC firewall rules and hierarchical firewall policies do not govern the VM metadata-server path."},
+{"d":2,"q":"What is the main Cloud DNS ALIAS use case?","o":["CNAME-like indirection at the apex of a public zone while returning synthesized A/AAAA answers","BGP route advertisement","Pod-to-Pod encryption","SMTP relay"],"a":[0],"e":"ALIAS solves the apex indirection problem by synthesizing address records."},
+
+{"d":3,"q":"What infrastructure does the GKE multi-cluster Gateway controller provision from Gateway API intent?","o":["Google Cloud Application Load Balancer resources","Cloud VPN only","A DNSSEC key only","A Compute Engine SSH rule"],"a":[0],"e":"The controller converts Gateway/HTTPRoute intent into Google Cloud load-balancing infrastructure."},
+{"d":3,"q":"Which Service types does GKE Multi-cluster Services support for cross-cluster service import?","o":["ClusterSetIP and headless","Only NodePort","Only LoadBalancer","ExternalName only"],"a":[0],"e":"MCS supports ClusterSetIP and headless Services; NodePort and LoadBalancer are not supported export types."},
+{"d":3,"q":"Do global external ALB custom request headers get added to health-check probes?","o":["No","Yes, always","Only for TCP checks","Only if Cloud Armor is disabled"],"a":[0],"e":"Custom request headers are added to client requests forwarded to backends, not health probes."},
+{"d":3,"q":"If the same custom header is configured in a global external ALB URL map and backend service, which value wins?","o":["URL-map value","Backend-service value","They are concatenated automatically","The request is dropped"],"a":[0],"e":"Google documents URL-map header transformation as taking precedence for the same header name."},
+{"d":3,"q":"MULTIPLE SELECT — What are the backend-service limits for configured custom headers on a global load balancer?","o":["16 custom request headers","16 custom response headers","8 KB total configured request-header size before expansion","Unlimited total size"],"a":[0,1,2],"e":"The documented hard limits are 16 request, 16 response, and 8 KB per direction before variable expansion."},
+{"d":3,"q":"What does a Cloud DNS ALIAS return to a client for an address query?","o":["Synthesized A or AAAA records","The proprietary ALIAS RR itself","A BGP route","An HTTP redirect"],"a":[0],"e":"Cloud DNS resolves the target itself and returns synthesized address records."},
+{"d":3,"q":"Which load-balancer family supports custom error responses?","o":["Global external Application Load Balancer","Regional internal ALB only","Classic ALB only","Protocol forwarding only"],"a":[0],"e":"Google documents custom error responses for the global external Application Load Balancer, not regional/classic modes."},
+{"d":3,"q":"What happens if the load balancer cannot fetch the configured custom error object?","o":["A generic non-branded error is served","The BGP session resets","The client is redirected to metadata server","Cloud DNS deletes the zone"],"a":[0],"e":"The feature falls back to a generic error object when the custom error content cannot be fetched."},
+
+{"d":4,"q":"What does a Cloud Router BGP task do?","o":["Manages BGP sessions and exchanges prefixes; it does not forward packets","Forwards every workload packet","Terminates HTTP/3","Hosts Cloud DNS zones"],"a":[0],"e":"BGP tasks are control-plane speakers; VPC data plane performs forwarding."},
+{"d":4,"q":"Two Dedicated Interconnect VLAN attachments use different edge availability domains. How many BGP tasks does the documented mapping use?","o":["Two","One","Zero","Four mandatory"],"a":[0],"e":"Different Interconnect edge availability domains map to two BGP tasks."},
+{"d":4,"q":"Two HA VPN tunnels attach to different HA VPN gateway interface numbers. What is the BGP-task implication?","o":["They use two BGP tasks","They must share one task","They disable BGP","They require Classic VPN"],"a":[0],"e":"Interface 0 and interface 1 represent separate task/failure-domain groupings."},
+{"d":4,"q":"What uniqueness rule applies to a Dedicated Interconnect candidate IPv4 BGP range?","o":["It must be unique among all Cloud Routers in all regions of the VPC","It may intentionally overlap every router","It must equal a workload subnet","It must be a public prefix"],"a":[0],"e":"Candidate peering space must be unique across Cloud Routers in the VPC."},
+{"d":4,"q":"What is the documented per-tunnel Cloud VPN packet-rate limit?","o":["250,000 packets per second for ingress plus egress","250,000 pps per direction independently","3 million pps guaranteed","No packet-rate limit"],"a":[0],"e":"The limit is 250k pps for the sum of both directions."},
+{"d":4,"q":"Why can a tunnel hit capacity below 3 Gbps?","o":["Small average packets can reach the 250k pps limit first","BGP only supports 1 Gbps","DNS TTL caps bandwidth","Cloud Armor limits VPN throughput"],"a":[0],"e":"Bandwidth equivalent varies with average packet size because the fundamental ceiling is packet rate."},
+{"d":4,"q":"When do additional HA VPN gateways become necessary for bandwidth scale-out?","o":["When tunnels need distinct public IP address pairs rather than sharing an interface IP","For every second tunnel regardless of addressing","Only for DNSSEC","Never"],"a":[0],"e":"More gateways provide additional interface public IPs when unique tunnel IP pairs are required."},
+{"d":4,"q":"Which Dedicated Interconnect attachment properties require recreation rather than in-place editing?","o":["VLAN ID and selected BGP IP addresses","Peer ASN only","Description only","Cloud Router name label only"],"a":[0],"e":"Google documents VLAN ID and BGP peering addresses as immutable existing-attachment properties."},
+
+{"d":5,"q":"What is the safest first step before allowing ExternalDNS to modify a production zone?","o":["Run the controller in dry-run mode and inspect proposed changes","Disable TXT ownership","Remove domain filtering","Delete the zone"],"a":[0],"e":"Dry-run validates desired changes and scope before write access causes mutations."},
+{"d":5,"q":"Which Kubernetes object is useful for checking whether MCS imported the endpoints behind a ServiceImport?","o":["The derived EndpointSlice","A Cloud Router route policy","An SSL policy","A target instance"],"a":[0],"e":"MCS creates an EndpointSlice for imported service endpoints; it is a useful propagation diagnostic."},
+{"d":5,"q":"A protocol-forwarded appliance process dies but the VM stays up. Why will Google not automatically remove it from service?","o":["Target instances have no health-check mechanism","Protocol forwarding always retries another VM","Cloud DNS hides the failure","BGP marks the process down"],"a":[0],"e":"Protocol forwarding has no backend health checks; external monitoring/automation is required."},
+{"d":5,"q":"An on-prem router logs a BGP reset but workload traffic never drops. Which evidence is most useful for identifying a Cloud Router task migration?","o":["Cloud Router event logs such as Router task activated, correlated with peer logs","Only DNS query logs","Cloud Armor request-body logs","A subnet creation audit"],"a":[0],"e":"Cloud Router logs help distinguish BGP-task control-plane events from data-path faults."},
+{"d":5,"q":"A custom error policy changes a backend 503 into client-visible 200. Which logs preserve both signals?","o":["httpRequest.status retains original status and overrideResponseCodeServed records the override","Only DNS logs","Only Cloud Router logs","No logs can distinguish them"],"a":[0],"e":"Google documents separate original and override status fields for custom error responses."},
+{"d":5,"q":"Real ALB requests work but the backend health check fails because the app requires X-App-Token inserted by a custom request header. Why?","o":["Custom request headers are not added to health-check probes","Health checks use BGP","Headers work only on UDP","The URL map deletes every header"],"a":[0],"e":"Design a health endpoint that does not depend on a client-request-only custom header."},
+{"d":5,"q":"A VM cannot send external SMTP on TCP 25 even though its egress firewall rule allows it. What should you check next?","o":["Google Cloud's external SMTP anti-abuse restriction/project status","The Gateway API ServiceImport","Cloud DNS ALIAS","The VLAN ID"],"a":[0],"e":"TCP/25 external egress can be platform-limited independently of your firewall allow rule."},
+
+{"d":6,"q":"What is the Cloud Armor hierarchical security-policy evaluation order?","o":["Organization, parent-to-child folders, project hierarchical policy, then service-level policy","Service first, then organization","Random by numeric priority across every policy","DNS zone order"],"a":[0],"e":"Hierarchy order is fixed before service-level policy evaluation."},
+{"d":6,"q":"What does goto_next do in a hierarchical Cloud Armor policy?","o":["Stops the current policy and continues evaluation at the next policy in the hierarchy","Allows the request terminally","Deletes the policy","Restarts the client TCP connection"],"a":[0],"e":"goto_next is a delegation action, unlike terminal allow/deny."},
+{"d":6,"q":"An organization-level hierarchical rule matches with allow. Will a later service-level deny still be evaluated?","o":["No; the matched allow is terminal","Yes; service policy always overrides organization policy","Only if DNSSEC is enabled","Only for UDP"],"a":[0],"e":"A terminal hierarchical allow/deny prevents later policies from re-deciding the request."},
+{"d":6,"q":"Cloud Armor and the ALB both insert a header with the same name. Which value reaches the backend?","o":["The load balancer's custom-header value overwrites the Cloud Armor value","Cloud Armor always wins","Both values are guaranteed to merge","The request is dropped"],"a":[0],"e":"Google documents load-balancer custom headers overwriting same-named Cloud Armor-inserted headers."},
+{"d":6,"q":"What security responsibility remains with the operator for custom error content?","o":["The custom-error feature does not scan/filter the error object for vulnerabilities","Google automatically performs application security review","Error objects cannot contain HTML","Cloud Armor signs every object"],"a":[0],"e":"The error content is another served application asset and must be secured by the operator."},
+{"d":6,"q":"Why can preventing the default VPC improve a new-project security baseline?","o":["It avoids automatic creation of a convenience network with pre-populated permissive firewall rules","It automatically enables every Cloud Armor rule","It removes IAM","It makes all workloads private without further design"],"a":[0],"e":"Skipping the default network removes a convenience configuration and forces intentional network/firewall creation."}
+];
+
+const quiz=document.getElementById('quiz');
+Q.forEach(function(x,i){var multi=x.a.length>1;var el=document.createElement('div');el.className='q';el.dataset.i=i;var h='<p><b>'+(i+1)+'. [Domain '+x.d+'] '+(multi?'MULTIPLE SELECT — ':'')+x.q+'</b></p>';x.o.forEach(function(o,j){var t=multi?'checkbox':'radio';h+='<label><input type="'+t+'" name="q'+i+'" value="'+j+'"> '+o+'</label><br>';});h+='<div class="feedback" hidden></div>';el.innerHTML=h;quiz.appendChild(el);});
+document.getElementById('grade').addEventListener('click',function(){var score=0;Q.forEach(function(x,i){var el=document.querySelector('.q[data-i="'+i+'"]');var chosen=Array.from(el.querySelectorAll('input:checked')).map(function(n){return +n.value;}).sort(function(a,b){return a-b;});var ans=x.a.slice().sort(function(a,b){return a-b;});var ok=chosen.length===ans.length&&chosen.every(function(v,k){return v===ans[k];});if(ok)score++;var f=el.querySelector('.feedback');f.hidden=false;f.className='feedback '+(ok?'right':'wrong');f.innerHTML='<b>'+(ok?'Correct':'Incorrect')+'.</b> Correct answer'+(ans.length>1?'s':'')+': '+ans.map(function(v){return x.o[v];}).join('; ')+'<br>'+x.e;});document.getElementById('score').textContent='Score: '+score+'/'+Q.length+' ('+Math.round(score*100/Q.length)+'%)';window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'});});
+</script>
+<footer class="card">
+<p><b>Validation target:</b> exactly 12 comprehensive lessons; one original Mermaid teaching diagram per lesson; explicit authoritative/supporting source roles; exactly 50 gradable questions with an 11/10/8/8/7/6 distribution; selectable single- and multiple-select answers; per-question feedback; final score and percentage; no backend dependency. The only external runtime library is Mermaid.</p>
+<p class="small">Original study material derived from the cited Google Cloud documentation and the Kubernetes SIG ExternalDNS project. No exam dumps or reproduced official exam questions are used.</p>
+</footer>
+</body></html>
